@@ -84,7 +84,7 @@ def evaluate(context: CoverContext, level: AutonomyLevel) -> list[RuleHit]:
             f"{context.cost} exceeds the {level.value} per-incident limit of "
             f"{Money(cents=limits.max_unattended_cents)}.",
         ))
-    if (context.week_spend + context.cost).cents > limits.weekly_budget_cents:
+    elif (context.week_spend + context.cost).cents > limits.weekly_budget_cents:
         hits.append(RuleHit(
             "weekly_budget_exhausted",
             f"{context.week_spend + context.cost} of premium this week exceeds the "
