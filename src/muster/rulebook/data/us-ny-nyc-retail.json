@@ -1,0 +1,19 @@
+{
+  "code": "us-ny-nyc-retail",
+  "name": "New York City Fair Workweek — retail",
+  "effective_from": "2017-11-26",
+  "notice_hours": 72,
+  "citation": "https://portal.311.nyc.gov/article/?kanumber=KA-02719",
+  "rest_hours": 11.0,
+  "rest_remedy": {"flat_amount_cents": 10000},
+  "rest_requires_written_consent": true,
+  "rest_has_carve_outs": false,
+  "carve_outs": ["worker_requested", "mutual_written_agreement", "act_of_nature", "threat_to_safety"],
+  "coverage": {"industries": ["retail"], "min_employees_worldwide": 20},
+  "premiums": [
+    {"band": "under_24_hours", "kinds": ["add_shift", "add_hours", "move_no_loss"], "amount_cents": 0,
+     "citation": "NYC311: retail additions inside 72 hours are prohibited without the worker's written consent, not priced"},
+    {"band": "under_24_hours", "kinds": ["cancel_shift", "subtract_hours", "move_with_loss"], "amount_cents": 0,
+     "citation": "NYC311: retail cancellations inside 72 hours are prohibited, not priced"}
+  ]
+}

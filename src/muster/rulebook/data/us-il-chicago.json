@@ -1,0 +1,39 @@
+{
+  "code": "us-il-chicago",
+  "name": "Chicago Fair Workweek Ordinance",
+  "effective_from": "2020-07-01",
+  "notice_hours": 336,
+  "citation": "https://www.chicago.gov/content/dam/city/depts/bacp/OSL/faqfairworkweek09252025.pdf",
+  "rest_hours": 10.0,
+  "rest_remedy": {"multiplier": 1.25, "overtime_multiplier": 1.5},
+  "rest_requires_written_consent": true,
+  "rest_has_carve_outs": false,
+  "carve_outs": [
+    "worker_requested", "mutual_shift_trade", "mutual_written_agreement",
+    "act_of_nature", "utility_failure", "threat_to_safety"
+  ],
+  "coverage": {
+    "industries": ["retail", "hospitality", "food_service", "restaurant", "warehouse", "manufacturing", "building_services", "healthcare"],
+    "min_employees_worldwide": 100
+  },
+  "premiums": [
+    {
+      "band": "inside_window",
+      "kinds": ["add_shift", "add_hours", "move_no_loss"],
+      "hours_at_rate": 1.0,
+      "citation": "OLS FAQ: 'one hour of additional pay when hours are added, or a shift's time or date is changed with no change to the number of hours worked'"
+    },
+    {
+      "band": "under_7_days",
+      "kinds": ["add_shift", "add_hours", "move_no_loss"],
+      "hours_at_rate": 1.0,
+      "citation": "OLS FAQ: predictability pay applies within 14 days with more than 24 hours' notice"
+    },
+    {
+      "band": "under_24_hours",
+      "kinds": ["subtract_hours", "cancel_shift", "move_with_loss"],
+      "fraction_of_lost_hours": 0.5,
+      "citation": "OLS FAQ: 'no less than 50% of their pay for any hours that are cancelled with less than 24 hours' notice'"
+    }
+  ]
+}

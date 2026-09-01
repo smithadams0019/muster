@@ -1,0 +1,23 @@
+{
+  "code": "us-ny-nyc-fastfood",
+  "name": "New York City Fair Workweek — fast food",
+  "effective_from": "2017-11-26",
+  "notice_hours": 336,
+  "citation": "https://portal.311.nyc.gov/article/?kanumber=KA-02719",
+  "rest_hours": 11.0,
+  "rest_remedy": {"flat_amount_cents": 10000},
+  "rest_requires_written_consent": true,
+  "rest_has_carve_outs": false,
+  "carve_outs": ["worker_requested", "mutual_written_agreement", "act_of_nature", "threat_to_safety"],
+  "coverage": {"industries": ["fast_food"], "min_employees_worldwide": 30},
+  "premiums": [
+    {"band": "inside_window", "kinds": ["move_no_loss", "add_hours", "add_shift"], "amount_cents": 1000,
+     "citation": "DCWP rules example: 'date change with no loss of hours ... less than 14 days' notice but at least 7 days' notice ... premium of $10'"},
+    {"band": "inside_window", "kinds": ["subtract_hours", "move_with_loss", "cancel_shift"], "amount_cents": 2000,
+     "citation": "DCWP rules example: '$20 schedule change premium for the subtraction of hours'"},
+    {"band": "under_7_days", "kinds": ["move_no_loss", "add_hours", "add_shift", "subtract_hours", "move_with_loss", "cancel_shift"], "amount_cents": 4500,
+     "citation": "DCWP rules example: 'less than 7 days' notice ... premium of $45'"},
+    {"band": "under_24_hours", "kinds": ["move_no_loss", "add_hours", "add_shift", "subtract_hours", "move_with_loss", "cancel_shift"], "amount_cents": 7500,
+     "citation": "DCWP rules example: 'less than 24 hours' notice ... premium of $75'"}
+  ]
+}

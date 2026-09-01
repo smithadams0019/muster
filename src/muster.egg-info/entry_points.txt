@@ -1,0 +1,3 @@
+[console_scripts]
+muster-demo = muster.demo:main
+muster-mcp = muster.mcp_server.server:main
