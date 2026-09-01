@@ -40,11 +40,22 @@ def test_an_unavailable_worker_is_not_offered():
 
 
 def test_an_option_that_breaches_rest_is_still_returned_and_carries_the_gap():
-    """It is expensive and needs consent. Hiding it hides a lawful choice."""
+    """It is expensive and needs consent. Hiding it hides a lawful choice.
+
+    The Monday 07:00 open is worked by the same barista who bridged in from
+    Sunday's late close, so that particular breach is excluded as "self" rather
+    than offered as a cover option. Scan the rest of the posted week instead: the
+    seeded roster's rotation of closers into next-day openers and bakers produces
+    the same short-rest shape on other shifts.
+    """
     world = SableCoffee()
-    gap = _gap(world)
-    options = enumerate_cover_options(world, gap, at=world.now())
-    breaching = [o for o in options if o.rest_gap_hours is not None and o.rest_gap_hours < 10]
+    schedule = world.schedule("site-or", datetime(2026, 7, 27, tzinfo=TZ))
+    breaching: list = []
+    for shift in schedule.shifts:
+        options = enumerate_cover_options(world, shift, at=world.now())
+        breaching = [o for o in options if o.rest_gap_hours is not None and o.rest_gap_hours < 10]
+        if breaching:
+            break
     assert breaching, "the seeded week must contain at least one closer who could open"
 
 
