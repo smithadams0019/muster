@@ -1,0 +1,16 @@
+flowchart LR
+    operator([Operator]):::actor --> console[Muster console<br/>React 18 · Vite]
+    console --> api[FastAPI control plane]
+    api --> loop{{DRAFT or HOLD loop<br/>Strands agent on Bedrock<br/>Claude Sonnet 4.6}}
+    loop --> toolcall[Guarded tool call]
+    toolcall --> guard1[PostingDependencyGuard<br/>nothing acts on an unposted<br/>schedule or unapproved cover]
+    guard1 -->|Proceed| guard2[EscalationPolicy<br/>may it act alone at this<br/>autonomy level?]
+    guard1 -->|Deny| refused[Refused<br/>never reaches the world]
+    guard2 -->|Proceed| act[Tool changes the world<br/>rulebook-priced cost engine]
+    act --> receipt[(Receipt<br/>immutable, itemised)]
+    guard2 -->|Confirm| inbox[[Decision inbox]]
+    inbox --> human([Human decides]):::actor
+    human -->|resume| loop
+
+    classDef actor fill:#2b6cb0,color:#fff,stroke:#1a4971;
+    class operator,human actor;
