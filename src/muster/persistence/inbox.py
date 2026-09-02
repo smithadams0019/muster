@@ -44,6 +44,8 @@ class PendingDecision:
     interrupt_id: str
     snapshot: dict[str, Any]
     rule_hits: list[dict[str, str]] = field(default_factory=list)
+    #: The guarded call this run stopped on: which tool, and its arguments.
+    proposal: dict[str, Any] = field(default_factory=dict)
 
 
 class DecisionInbox:
@@ -58,6 +60,7 @@ class DecisionInbox:
         interrupt_id: str,
         snapshot: dict[str, Any],
         rule_hits: list[dict[str, str]],
+        proposal: dict[str, Any] | None = None,
     ) -> str:
         """Park an escalation and return its id.
 
@@ -73,6 +76,7 @@ class DecisionInbox:
             interrupt_id=interrupt_id,
             snapshot=dict(snapshot),
             rule_hits=[dict(h) for h in rule_hits],
+            proposal=dict(proposal or {}),
         )
         return decision.decision_id
 

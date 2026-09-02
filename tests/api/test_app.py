@@ -339,3 +339,36 @@ def test_a_grant_whose_run_pauses_again_lands_back_in_the_inbox():
                        json={"outcome": "granted", "channel": "console"}).json()
     assert body["status"] == "awaiting_decision"
     assert client.get("/api/decisions").json()[0]["decision_id"] == body["decision_id"]
+
+
+def test_a_held_decision_names_the_worker_it_is_about():
+    """The policy stops one call about one person. Until that was carried through,
+    the console asked the operator to approve "$17.50" with an em dash where the
+    name belongs — the rule and the money, and no answer to "for whom"."""
+    async def pauses(state, disruption):
+        return HoldRunResult(
+            True, "int-1", "cost_over_budget",
+            {"messages": []}, "held",
+            [{"rule": "cost_over_budget", "detail": "$17.50 exceeds the limit of $0.00."}],
+            {"tool": "assign_cover", "worker_id": "w-or-4", "shift_id": disruption.shift_id},
+        )
+
+    client, state = _client(hold_runner=pauses)
+    client.post("/api/disruptions", json=DISRUPTION)
+
+    held = client.get("/api/decisions").json()[0]
+    assert held["proposal"]["worker_id"] == "w-or-4"
+    assert held["proposal"]["worker_name"] == state.world.worker("w-or-4").name
+    assert held["proposal"]["tool"] == "assign_cover"
+
+
+def test_a_decision_with_no_proposal_behind_it_says_so_rather_than_guessing():
+    async def pauses(state, disruption):
+        return HoldRunResult(
+            True, "int-1", "unassessable", {"messages": []}, "held",
+            [{"rule": "unassessable", "detail": "cannot be judged"}],
+        )
+
+    client, _ = _client(hold_runner=pauses)
+    client.post("/api/disruptions", json=DISRUPTION)
+    assert client.get("/api/decisions").json()[0]["proposal"] is None

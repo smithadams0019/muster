@@ -23,7 +23,11 @@ from muster.loops.hold.tools import build_hold_tools
 from muster.persistence.consent import ConsentStore
 from muster.persistence.receipts import ReceiptBook
 from muster.policy.dependency import PostingDependencyGuard
-from muster.policy.escalation import EscalationPolicy, rules_that_paused
+from muster.policy.escalation import (
+    EscalationPolicy,
+    proposal_that_paused,
+    rules_that_paused,
+)
 
 MODEL_ID = os.environ.get("MUSTER_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
 REGION = os.environ.get("MUSTER_AWS_REGION", "us-east-1")
@@ -59,6 +63,9 @@ class HoldRunResult:
     snapshot: dict[str, Any] | None
     text: str
     rule_hits: list[dict[str, str]] = field(default_factory=list)
+    #: The tool call the operator is being asked about, arguments and all,
+    #: so the question can name who it is about.
+    proposal: dict[str, Any] = field(default_factory=dict)
 
 
 def build_default_policy(
@@ -131,6 +138,7 @@ def _result_from(agent: Agent, raw: Any, policy: EscalationPolicy) -> HoldRunRes
         snapshot=agent.take_snapshot(preset="session").__dict__,
         text=interrupt.reason or str(raw),
         rule_hits=[{"rule": h.rule, "detail": h.detail} for h in hits],
+        proposal=proposal_that_paused(raw, policy),
     )
 
 

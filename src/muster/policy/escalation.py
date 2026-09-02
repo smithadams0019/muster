@@ -72,6 +72,11 @@ class EscalationPolicy(InterventionHandler):
         self.context_provider = context_provider
         self.last_hits: list[RuleHit] = []
         self.escalations: dict[str, list[RuleHit]] = {}
+        #: tool-use id -> the call that was stopped, so the question put to the
+        #: operator can name who it is about. Without this the console asked
+        #: "approve $17.50?" with an em dash where the worker's name belongs -
+        #: the rule and the money, and no answer to "for whom".
+        self.proposals: dict[str, dict[str, Any]] = {}
 
     def before_tool_call(self, event: Any, **kwargs: Any) -> Any:
         tool_name = event.tool_use["name"]
@@ -93,7 +98,12 @@ class EscalationPolicy(InterventionHandler):
             return Proceed(reason=f"within the {self.level.value} limits")
 
         self.last_hits = hits
-        self.escalations[event.tool_use.get("toolUseId", "")] = hits
+        tool_use_id = event.tool_use.get("toolUseId", "")
+        self.escalations[tool_use_id] = hits
+        self.proposals[tool_use_id] = {
+            "tool": tool_name,
+            **event.tool_use.get("input", {}),
+        }
         return Confirm(
             prompt=" ".join(hit.detail for hit in hits) + " Approve this?",
             reason=hits[0].rule,
@@ -101,12 +111,14 @@ class EscalationPolicy(InterventionHandler):
         )
 
 
-def rules_that_paused(result: Any, policy: EscalationPolicy) -> list[RuleHit]:
-    """The hits belonging to the interrupt that actually stopped this run.
+def _hits_and_proposal(
+    result: Any, policy: EscalationPolicy,
+) -> tuple[list[RuleHit], dict[str, Any]]:
+    """Match the interrupt that stopped this run to what the policy recorded.
 
-    Read from `escalations` by tool-use id rather than from `last_hits`, because a
-    run can clear a guard on one call and pause on a later one, and `last_hits`
-    would by then describe the wrong call.
+    Read by tool-use id rather than from `last_hits`, because a run can clear a
+    guard on one call and pause on a later one, and `last_hits` would by then
+    describe the wrong call.
     """
     interrupts = getattr(result, "interrupts", None) or []
     for interrupt in interrupts:
@@ -117,5 +129,15 @@ def rules_that_paused(result: Any, policy: EscalationPolicy) -> list[RuleHit]:
         # never invent an attribute name the SDK does not have.
         for tool_use_id, hits in policy.escalations.items():
             if tool_use_id and tool_use_id in str(interrupt.id):
-                return hits
-    return policy.last_hits
+                return hits, policy.proposals.get(tool_use_id, {})
+    return policy.last_hits, {}
+
+
+def proposal_that_paused(result: Any, policy: EscalationPolicy) -> dict[str, Any]:
+    """The tool call the operator is being asked about, arguments and all."""
+    return _hits_and_proposal(result, policy)[1]
+
+
+def rules_that_paused(result: Any, policy: EscalationPolicy) -> list[RuleHit]:
+    """The hits belonging to the interrupt that actually stopped this run."""
+    return _hits_and_proposal(result, policy)[0]

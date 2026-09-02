@@ -144,6 +144,7 @@ def _open_decision(state: MusterState, offer_id: str, result: RunResult) -> str:
         interrupt_id=result.interrupt_id,
         snapshot=result.snapshot or {},
         rule_hits=result.rule_hits,
+        proposal=getattr(result, "proposal", {}) or {},
     )
     return decision_id
 
@@ -199,10 +200,22 @@ def _serialize_pending(pending: PendingDecision, state: MusterState) -> dict[str
             "site_id": decision.offer_id,
             "site_name": site.name if site else decision.offer_id,
         }
+    # Who the question is about. The policy stops a specific call on a specific
+    # worker, and until this was carried through, the console asked the operator
+    # to approve "$17.50" with an em dash where the name belongs.
+    proposed_worker_id = pending.proposal.get("worker_id")
+    proposed_worker = state.world.worker(proposed_worker_id) if proposed_worker_id else None
+
     return {
         "decision_id": decision.decision_id,
         "kind": kind,
         "subject": subject,
+        "proposal": {
+            "tool": pending.proposal.get("tool"),
+            "worker_id": proposed_worker_id,
+            "worker_name": proposed_worker.name if proposed_worker else None,
+            "hourly_rate": proposed_worker.hourly_rate.dollars if proposed_worker else None,
+        } if pending.proposal else None,
         "offer_id": decision.offer_id,
         "rule": decision.rule,
         "prompt": decision.prompt,

@@ -25,7 +25,8 @@ function TableStyle() {
         color: var(--ink-3); padding: 8px 10px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
       .ot-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); color: var(--ink); vertical-align: top; }
       .ot-table tr:last-child td { border-bottom: none; }
-      .ot-mono { font-family: var(--mono); }
+      .ot-mono { font-family: var(--mono); white-space: nowrap; }
+      .ot-detail { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
       .ot-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: var(--r-pill);
         font-size: 11.5px; font-weight: 600; white-space: nowrap; }
       .ot-pill-consent { background: var(--consent-bg); color: var(--consent); border: 1px solid var(--consent-line); }
@@ -54,7 +55,10 @@ export default function OptionTable({ options }) {
             <tr key={opt.id}>
               <td>{opt.worker || '—'}</td>
               <td className={opt.costIsExact ? 'ot-mono' : ''}>{opt.cost}</td>
-              <td>{opt.clause}</td>
+              <td>
+                {opt.clause}
+                {opt.detail && <div className="ot-detail">{opt.detail}</div>}
+              </td>
               <td>
                 {opt.consentRequired ? (
                   // Deliberately a <span>, not a <button>: nothing here is

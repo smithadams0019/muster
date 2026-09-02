@@ -216,21 +216,37 @@ export function Schedule({ siteId, groupBy, week }) {
 // -- Decisions ----------------------------------------------------------------
 // The screen that sells the product.
 
+// The money the rule named, pulled out of its own sentence. The server writes
+// each detail as prose because prose is what the operator should read; the table
+// wants the figure on its own, in the mono column, so the eye can compare rows.
+const MONEY_IN_SENTENCE = /\$[\d,]+\.\d{2}/
+
 function optionsFromDecision(decision, consentList, world) {
   const consentForShift = consentList.filter((c) => c.shift_id === decision.offer_id)
+  // Who the run actually stopped on. The policy guards one call about one
+  // person; before the server sent this through, every row showed an em dash
+  // where the name belongs — the rule and the money, and no answer to "for whom".
+  const proposed = decision.proposal || {}
+
   return (decision.rule_hits || []).map((hit, i) => {
     const isConsentRule = NON_NEGOTIABLE.has(hit.rule)
     const match = isConsentRule ? consentForShift[0] : null
+    const worker = match
+      ? workerName(world, match.worker_id)
+      : proposed.worker_name || (proposed.worker_id ? workerName(world, proposed.worker_id) : null)
+    const money = match
+      ? formatDollarsStr(match.premium_owed)
+      : (hit.detail.match(MONEY_IN_SENTENCE) || [])[0]
+
     return {
       id: `${decision.decision_id}-${hit.rule}-${i}`,
-      worker: match ? workerName(world, match.worker_id) : null,
-      cost: match ? formatDollarsStr(match.premium_owed) : hit.detail,
-      costIsExact: Boolean(match),
+      worker,
+      cost: money || hit.detail,
+      costIsExact: Boolean(money),
       clause: RULE_LABELS[hit.rule] || hit.rule,
+      detail: money ? hit.detail : null,
       consentRequired: isConsentRule,
-      consentLabel: match
-        ? `needs ${workerName(world, match.worker_id)}'s yes`
-        : "needs this person's yes",
+      consentLabel: worker ? `needs ${worker}'s yes` : "needs this person's yes",
     }
   })
 }

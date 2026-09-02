@@ -106,3 +106,39 @@ def test_the_confirm_carries_musters_evaluator_not_the_sdk_default():
     )
     action = policy.before_tool_call(_event("assign_cover"))
     assert action.evaluate is approves
+
+
+def _tagged(tool_name, tool_use_id, **args):
+    return SimpleNamespace(
+        tool_use={"name": tool_name, "input": args, "toolUseId": tool_use_id},
+    )
+
+
+def test_the_policy_records_the_call_it_stopped_not_only_the_reason():
+    """So the question put to the operator can name who it is about."""
+    from muster.policy.escalation import proposal_that_paused
+
+    policy = EscalationPolicy(
+        AutonomyLevel.CONSERVATIVE, lambda name, args: _ctx(cost=Money.from_dollars("17.50")),
+    )
+    policy.before_tool_call(
+        _tagged("assign_cover", "tu-9", worker_id="w-or-4", shift_id="s-1", option_id="opt-1"),
+    )
+
+    result = SimpleNamespace(interrupts=[SimpleNamespace(id="v1:before_tool_call:tu-9:abc")])
+    proposal = proposal_that_paused(result, policy)
+    assert proposal["tool"] == "assign_cover"
+    assert proposal["worker_id"] == "w-or-4"
+
+
+def test_a_run_that_cleared_one_guard_and_paused_on_another_reports_the_second():
+    """`last_hits` would by then describe the wrong call, and so would its args."""
+    from muster.policy.escalation import proposal_that_paused
+
+    answers = iter([_ctx(), _ctx(cost=Money.from_dollars("17.50"))])
+    policy = EscalationPolicy(AutonomyLevel.CONSERVATIVE, lambda name, args: next(answers))
+    policy.before_tool_call(_tagged("assign_cover", "tu-1", worker_id="w-or-1"))
+    policy.before_tool_call(_tagged("assign_cover", "tu-2", worker_id="w-or-2"))
+
+    result = SimpleNamespace(interrupts=[SimpleNamespace(id="v1:before_tool_call:tu-2:abc")])
+    assert proposal_that_paused(result, policy)["worker_id"] == "w-or-2"
