@@ -78,7 +78,10 @@ export function setAutonomy(level) {
 }
 
 export function resetDemo() {
-  return request('/api/demo/reset', { method: 'POST' })
+  // BASE is already "/api" — every path in this file is relative to it. Passing
+  // the full route asked for /api/api/demo/reset, which the console reported as
+  // a 405 from the static file mount rather than a 404.
+  return request('/demo/reset', { method: 'POST' })
 }
 
 export function receiptsCsvUrl() {
