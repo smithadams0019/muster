@@ -119,16 +119,12 @@ Then look at **Autonomy** for the two rules the dial cannot reach.
 
 ## Testing instructions
 
-No login, nothing to install. It runs on a fixed seeded week so every figure is reproducible.
+Live at **https://ipxvamjzfk.us-west-2.awsapprunner.com** — no login, nothing to install. Fixed seeded week, so every figure is reproducible. Each run takes 10–60 seconds: it is a real Bedrock call.
 
-**1. Watch it stop.** Autonomy → **conservative**. Operator menu (top right) → **Report a disruption** → pick a shift → **Send**. It takes 10 to 60 seconds because it is a real Bedrock call. It lands in **Decisions**, naming the rule in plain English: *"$45.00 exceeds the conservative per-incident limit of $0.00."*
+1. Operator menu (top right) → **Reset the demo world**.
+2. Autonomy → **Conservative**. Operator menu → **Report a disruption** → any shift → **Send**. It stops in **Decisions** and names the rule and the person. **Receipts is still empty** — it stopped before it did anything, not after.
+3. **Approve** and the paused run resumes and writes a receipt with your name on it. **Decline** and nothing changes at all.
+4. Site picker → **Sable Bleecker** → **Sat 1 Aug** → report either **2:00pm–10:00pm** shift. Every lawful cover is a sixteen-hour day, so only the worker can agree to it. Muster asks, in **Consent**, and stops.
+5. **Autonomy** shows the two rules no level can move, each with the statute behind it.
 
-**2. Watch the resume.** Add a note and press **Approve**. The paused run picks up where it stopped, commits the cover, and **Receipts** gains a row with the clause, the money and your name.
-
-**3. Watch it draft.** Step to the next week with the toolbar's **›**. It's unposted. Press **Draft with Muster** and it builds the week — proposing, checking, removing what it got wrong, and stopping before it posts if the week would leave a site below its certification minimum.
-
-**4. The line it will not cross.** **Autonomy** shows three levels and, beneath them, two rules marked fixed at every level, each with the statute behind it.
-
-**5. The line that is not about money.** Site picker → **Sable Bleecker**, week of 27 July, **Saturday 1 August**. Five of the fourteen are on leave and everyone else is already on the morning, so report a disruption on either 14:00–22:00 shift. Every lawful cover is a sixteen-hour day, which NYC's eleven-hour rule makes the worker's own call. Muster stops, asks, and **Consent** gains the ask. Answer it and the run picks up from there — a yes finishes the cover, a no is final.
-
-To run it locally instead, see Quick start in the README. The offline suite needs no AWS credentials: `pytest -m "not integration"`.
+Locally: `pytest -m "not integration"` — 261 tests, no AWS credentials needed.
