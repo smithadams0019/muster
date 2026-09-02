@@ -178,7 +178,7 @@ SLIDES = f"""
     <li><h3>Interventions and interrupts</h3><p>The autonomy boundary is executable code, and a paused run resumes days later.</p></li>
     <li><h3>An MCP server</h3><p>The compliance engine, read-only. It can price a change; it cannot change a week.</p></li>
   </ul>
-  <p class="punch final">226 tests offline. &nbsp;Live on AWS right now. &nbsp;Let's use it.</p>
+  <p class="punch final">243 tests offline. &nbsp;Live on AWS right now. &nbsp;Let's use it.</p>
 </section>
 """
 

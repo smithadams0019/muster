@@ -103,9 +103,49 @@ class ConsentStore:
     def pending(self) -> list[ConsentRequest]:
         return list(self._pending.values())
 
+    def answered(self) -> list[ConsentRecord]:
+        """Every ask that has been settled, newest first.
+
+        A decline is legally final and an expiry counts as one, so the record of
+        it is the reason Muster may never ask that person again. Serving only
+        `pending()` meant the console lost the answer at the moment it arrived:
+        the screen could show what was outstanding and never what anyone said.
+        """
+        return sorted(
+            self._answered.values(),
+            key=lambda r: r.answered_at or r.request.expires_at,
+            reverse=True,
+        )
+
     def outcome_for(self, request_id: str) -> ConsentOutcome | None:
         record = self._answered.get(request_id)
         return record.outcome if record else None
 
     def has_declined(self, worker_id: str, shift_id: str) -> bool:
         return (worker_id, shift_id) in self._declined
+
+    def has_granted(self, worker_id: str, shift_id: str) -> bool:
+        """True if this worker has agreed, in the record, to this shift.
+
+        What satisfies a rest-period waiver is the worker's own agreement. Until
+        this existed the policy asked only whether a waiver was *needed*, so a
+        cover the worker had already consented to was refused for needing the
+        consent it already had - and the run went back round to ask again.
+        """
+        return self.grant_for(worker_id, shift_id) is not None
+
+    def grant_for(self, worker_id: str, shift_id: str) -> ConsentRecord | None:
+        """The granted record behind this cover, for the receipt to carry.
+
+        A cover that exists only because someone agreed to it should say so, with
+        who and when. Without this the receipt for a $100 clopening premium
+        recorded the money and the clause and left the consent field empty - on
+        the one artefact an investigator opens to find exactly that.
+        """
+        return next(
+            (record for record in self._answered.values()
+             if record.request.worker_id == worker_id
+             and record.request.shift_id == shift_id
+             and record.outcome is ConsentOutcome.GRANTED),
+            None,
+        )

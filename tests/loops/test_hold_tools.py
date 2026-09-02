@@ -127,3 +127,88 @@ def test_an_invented_option_id_is_still_refused_after_re_deriving():
     )
     assert "error" in result
     assert ledger == []
+
+
+def test_an_unknown_consent_kind_is_refused_with_the_ones_that_would_work():
+    """A refusal that names only the rejected value is a dead end. A live run
+    spent four calls guessing at this and left the shift uncovered."""
+    from muster.domain.types import ConsentKind
+
+    world, _, _, _, tools = _tools()
+    schedule = world.schedule("site-nyc", datetime(2026, 7, 27, tzinfo=TZ))
+    gap = next(s for s in schedule.shifts if s.worker_id and s.starts_at >= datetime(2026, 7, 27, tzinfo=TZ))
+    other = next(w for w in world.workers("site-nyc") if w.worker_id != gap.worker_id)
+
+    result = tools["request_consent"](
+        worker_id=other.worker_id, shift_id=gap.shift_id, kind="rest_period_premium",
+    )
+    assert "error" in result
+    for kind in ConsentKind:
+        assert kind.value in result["error"]
+
+
+def test_an_option_that_needs_consent_says_which_consent():
+    """So request_consent is never a guess."""
+    world, _, _, _, tools = _tools()
+    schedule = world.schedule("site-nyc", datetime(2026, 7, 27, tzinfo=TZ))
+
+    seen_consent = False
+    for shift in schedule.shifts:
+        if shift.worker_id is None:
+            continue
+        offers = tools["list_cover_options"](shift_id=shift.shift_id)
+        if isinstance(offers, dict):  # the bridge shift's week is not posted
+            continue
+        for offer in offers:
+            if offer["requires_consent"]:
+                assert offer["consent_kind"] == "rest_waiver"
+                seen_consent = True
+            else:
+                assert offer["consent_kind"] is None
+    assert seen_consent, "the seeded week must contain a cover that needs consent"
+
+
+def test_a_cover_that_needed_consent_carries_it_onto_the_receipt():
+    """The receipt is what an investigator reads, and 'who consented and when' is
+    among the first things they look for. It used to be written as None."""
+    from datetime import timedelta
+
+    from muster.domain.types import ConsentKind, ConsentOutcome, Money
+
+    world, _, receipts, consent, tools = _tools()
+    schedule = world.schedule("site-nyc", datetime(2026, 7, 27, tzinfo=TZ))
+    gap = next(
+        s for s in schedule.shifts
+        if s.worker_id and s.starts_at >= datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    offers = tools["list_cover_options"](shift_id=gap.shift_id)
+    chosen = offers[0]
+
+    request = consent.ask(
+        worker_id=chosen["worker_id"], shift_id=gap.shift_id, kind=ConsentKind.REST_WAIVER,
+        premium_owed=Money.from_dollars("145.00"), what_it_means="Cover this.",
+        asked_at=world.now(), expires_in=timedelta(hours=4),
+    )
+    consent.answer(request.request_id, ConsentOutcome.GRANTED,
+                   answered_at=world.now(), channel="sms")
+
+    tools["assign_cover"](shift_id=gap.shift_id, worker_id=chosen["worker_id"],
+                          option_id=chosen["option_id"])
+
+    written = receipts.all()[-1]
+    assert written.consent is not None
+    assert written.consent.outcome is ConsentOutcome.GRANTED
+    assert written.consent.channel == "sms"
+
+
+def test_a_cover_nobody_was_asked_about_carries_no_consent():
+    world, _, receipts, _, tools = _tools()
+    schedule = world.schedule("site-or", datetime(2026, 7, 27, tzinfo=TZ))
+    gap = next(
+        s for s in schedule.shifts
+        if s.worker_id and s.starts_at >= datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    offers = tools["list_cover_options"](shift_id=gap.shift_id)
+    tools["assign_cover"](shift_id=gap.shift_id, worker_id=offers[0]["worker_id"],
+                          option_id=offers[0]["option_id"])
+    assert receipts.all()[-1].consent is None

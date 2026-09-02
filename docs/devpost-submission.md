@@ -70,6 +70,12 @@ Everything real I found, I found by using the thing. Every one of these passed a
 
 **And DRAFT had no way to undo a shift it had proposed.** Generate-and-repair needs a repair primitive; `propose_shift` was append-only. In a live run the agent proposed overlapping shifts, saw the rest breaches it had caused, couldn't remove them, and stopped — asking me to delete them through an admin panel that does not exist.
 
+**The cover enumerator offered people who were already working.** It excluded anyone unavailable and anyone who had declined, and never asked whether the candidate was on an overlapping shift. So the lead rostered eight until four was offered, priced and ranked as cover for the open that ran seven until three: one person in two places, with a premium attached to the second one.
+
+**Two of the eight rules could not fire.** `meets_role_minimum` was the literal `True`, and the certification test asked whether the site employed a certified person *anywhere* — true of every site in every world. The console advertised a rule that was unreachable. It now walks the hours of the shift, because that is how being short happens: the lead goes home at four, the close runs to ten, and the floor is short for the six hours in between while every individual shift looks fine.
+
+**And the Consent screen forgot every answer.** The API served only outstanding asks, so the moment a worker replied their answer left the screen — on a screen whose whole subject is that a decline is final and is the record that stops Muster asking again.
+
 ## Accomplishments that I'm proud of
 
 The rulebook. Four ordinances read from primary sources and encoded as data with citations attached to individual figures, so you can check my work without reading any Python.
@@ -85,6 +91,8 @@ Tests tell you the code does what you wrote. Clicking tells you whether you wrot
 The last pass over this was me driving every control in the console — 25 assertions over buttons, tabs, pickers and modals, and 9 more over the end-to-end flows. It found seven controls that were decoration or lied: a "Post schedule" button that ran the drafting loop, a week stepper that was permanently disabled, a view selector with no handler, an "Insights" button with no screen behind it, and two modals that couldn't be dismissed with Escape — the composer's overlay stayed up and swallowed every click on the page behind it.
 
 None of that was visible in 226 passing tests.
+
+The same thing happened again the second time I sat down with it. The demo world's own posted week was staffed three shifts a day against a demand curve that peaked at nine, so the console's headline chart — scheduled cover against required cover — showed a shop that was understaffed every hour of every day at all three sites. A compliance product whose opening image is a labour failure of its own is arguing against itself. The week is now built from each day's demand curve and fitted to workers under the constraints the rulebooks care about, with one deliberate rest breach left in it for the DRAFT loop to find.
 
 ## What's next for Muster
 
@@ -120,5 +128,7 @@ No login, nothing to install. It runs on a fixed seeded week so every figure is 
 **3. Watch it draft.** Step to the next week with the toolbar's **›**. It's unposted. Press **Draft with Muster** and it builds the week — proposing, checking, removing what it got wrong, and stopping before it posts if the week would leave a site below its certification minimum.
 
 **4. The line it will not cross.** **Autonomy** shows three levels and, beneath them, two rules marked fixed at every level, each with the statute behind it.
+
+**5. The line that is not about money.** Site picker → **Sable Bleecker**, week of 27 July, **Saturday 1 August**. Five of the fourteen are on leave and everyone else is already on the morning, so report a disruption on either 14:00–22:00 shift. Every lawful cover is a sixteen-hour day, which NYC's eleven-hour rule makes the worker's own call. Muster stops, asks, and **Consent** gains the ask. Answer it and the run picks up from there — a yes finishes the cover, a no is final.
 
 To run it locally instead, see Quick start in the README. The offline suite needs no AWS credentials: `pytest -m "not integration"`.

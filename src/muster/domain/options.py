@@ -5,13 +5,20 @@ back with the rest, because the escalation this feeds exists precisely to put th
 choices in front of a person. A cheaper enumeration that quietly dropped the
 expensive options would leave the operator choosing from a menu they cannot see.
 
-Two exclusions only, and both are about the worker rather than the money: someone
-unavailable in that window, and someone who has already said no to this shift.
+Three exclusions, and none of them is about the money: someone already rostered on
+a shift that overlaps this one, someone unavailable in that window, and someone who
+has already said no to this shift.
+
+The first of those was missing, and the omission was not cosmetic. A worker on the
+Saturday lead shift from eight until four was offered as cover for the open from
+seven until three, priced, ranked and recommended - a person in two places at once,
+with a premium attached to the second one.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Any
 
 from muster.adapters.base import WorldAdapter
 from muster.domain.carve_outs import CarveOutClaim
@@ -34,6 +41,8 @@ def enumerate_cover_options(
     options: list[CoverOption] = []
     for worker in world.workers(gap.site_id):
         if worker.worker_id == gap.worker_id:
+            continue
+        if schedule is not None and _already_working(schedule, worker.worker_id, gap):
             continue
         if not worker.is_available(gap.starts_at, gap.ends_at):
             continue
@@ -59,6 +68,17 @@ def enumerate_cover_options(
             note="on the standby list" if claims else "",
         ))
     return options
+
+
+def _already_working(schedule: Any, worker_id: str, gap: Shift) -> bool:
+    """True if `worker_id` is already on a shift overlapping the gap."""
+    return any(
+        shift.worker_id == worker_id
+        and shift.shift_id != gap.shift_id
+        and shift.starts_at < gap.ends_at
+        and gap.starts_at < shift.ends_at
+        for shift in schedule.shifts
+    )
 
 
 def _week_start(moment: datetime) -> datetime:

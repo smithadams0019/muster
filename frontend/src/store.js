@@ -148,7 +148,22 @@ export const useStore = create((set, get) => ({
     try {
       const res = await api.answerConsent(id, { outcome, channel: 'console' })
       await get().refresh({ quiet: true })
-      get().notify(outcome === 'granted' ? 'Consent recorded' : 'Decline recorded')
+
+      // A grant sends Muster back to finish the cover it stopped to ask about,
+      // so the answer here has the same three endings a disruption does. Saying
+      // "Consent recorded" for all of them told the operator nothing about
+      // whether the shift ended up covered.
+      if (res.status === 'awaiting_decision') {
+        const rule = ruleFor(get().decisions, res.decision_id, res.rule)
+        get().notify(`Consent recorded — now held for you: ${rule}`)
+        set({ route: 'decisions' })
+      } else if (res.status === 'covered') {
+        get().notify('Consent recorded — the shift is covered')
+      } else if (res.status === 'declined') {
+        get().notify('Decline recorded — Muster will not ask again')
+      } else {
+        get().notify('Consent recorded, but nobody could take the shift')
+      }
       return res
     } catch (err) {
       get().notify(err?.message || 'Could not record consent')

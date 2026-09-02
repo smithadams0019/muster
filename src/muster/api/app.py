@@ -233,6 +233,10 @@ def _serialize_receipt(receipt: Any) -> dict[str, Any]:
         "consent": (
             {
                 "outcome": receipt.consent.outcome.value,
+                "worker_id": receipt.consent.request.worker_id,
+                "kind": receipt.consent.request.kind.value,
+                "channel": receipt.consent.channel,
+                "asked_at": receipt.consent.request.asked_at.isoformat(),
                 "answered_at": (
                     receipt.consent.answered_at.isoformat() if receipt.consent.answered_at else None
                 ),
@@ -490,9 +494,16 @@ def create_app(
 
     @app.get("/api/consent")
     def get_consent() -> list[dict[str, Any]]:
+        """Every ask, outstanding and settled.
+
+        Settled ones stay on the list because a decline is final: it is the
+        record that stops Muster asking again, and an operator looking at this
+        screen is entitled to see what their people actually said.
+        """
         state: MusterState = app.state.muster
-        return [
-            {
+
+        def serialize(request: Any, outcome: str | None, answered_at: Any) -> dict[str, Any]:
+            return {
                 "request_id": request.request_id,
                 "worker_id": request.worker_id,
                 "shift_id": request.shift_id,
@@ -501,12 +512,30 @@ def create_app(
                 "what_it_means": request.what_it_means,
                 "asked_at": request.asked_at.isoformat(),
                 "expires_at": request.expires_at.isoformat(),
+                "outcome": outcome,
+                "answered_at": answered_at.isoformat() if answered_at else None,
             }
-            for request in state.consent.pending()
+
+        return [
+            serialize(request, None, None) for request in state.consent.pending()
+        ] + [
+            serialize(record.request, record.outcome.value, record.answered_at)
+            for record in state.consent.answered()
         ]
 
     @app.post("/api/consent/{request_id}/answer")
-    def answer_consent(request_id: str, payload: ConsentAnswerIn) -> dict[str, Any]:
+    async def answer_consent(request_id: str, payload: ConsentAnswerIn) -> dict[str, Any]:
+        """Record what the worker said, and act on it.
+
+        A grant is not the end of the errand. The run that asked stopped at the
+        ask, because it may not decide on a worker's behalf that they will work
+        inside their rest period; once they have said yes, the cover it was
+        asking about is the thing that still needs doing. So a grant re-runs the
+        hold loop for that shift, which now finds the same option with the
+        consent behind it. A decline is final and starts nothing: the worker is
+        excluded from every future enumeration for this shift, which is exactly
+        what the `worker_declined` rule is protecting.
+        """
         state: MusterState = app.state.muster
         try:
             record = state.consent.answer(
@@ -514,7 +543,26 @@ def create_app(
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return {"request_id": request_id, "outcome": record.outcome.value}
+
+        if record.outcome is not ConsentOutcome.GRANTED:
+            return {"request_id": request_id, "outcome": record.outcome.value,
+                    "status": "declined"}
+
+        disruption = Disruption(
+            disruption_id=f"dis-{uuid.uuid4().hex[:8]}",
+            kind=DisruptionKind.SICK_CALL,
+            shift_id=record.request.shift_id,
+            reported_at=state.world.now(),
+            note=f"{state.world.worker(record.request.worker_id).name} has consented to cover this.",
+        )
+        result = await hold_runner(state, disruption)
+        if result.paused:
+            decision_id = _open_decision(state, record.request.shift_id, result)
+            return {"request_id": request_id, "outcome": record.outcome.value,
+                    "status": "awaiting_decision", "decision_id": decision_id}
+        covered = _shift_is_covered(state, record.request.shift_id, result)
+        return {"request_id": request_id, "outcome": record.outcome.value,
+                "status": "covered" if covered else "uncovered"}
 
     @app.get("/api/receipts")
     def get_receipts() -> list[dict[str, Any]]:

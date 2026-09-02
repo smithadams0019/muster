@@ -19,6 +19,7 @@ from typing import Any
 from muster.adapters.base import WorldAdapter
 from muster.domain.options import enumerate_cover_options
 from muster.domain.pricing import price_change
+from muster.domain.staffing import meets_minimums
 from muster.domain.types import AutonomyLevel, ChangeKind, Money
 from muster.persistence.consent import ConsentStore
 from muster.policy.escalation import GUARDED_TOOLS
@@ -26,10 +27,20 @@ from muster.policy.rules import CoverContext
 from muster.rulebook.loader import for_code
 
 
-#: Guarded because they reach a person, but they create no new money. The cost
-#: was approved when the cover was assigned; charging it again at notification
-#: time would ask the operator to approve one decision twice.
-_CREATES_NO_LIABILITY = frozenset({"notify_worker"})
+#: Guarded because they reach a person, but they create no new money and commit
+#: nothing. `notify_worker` tells someone about a cover that is already in the
+#: ledger; the cost was approved when it was assigned, and charging it again at
+#: notification time would ask the operator to approve one decision twice.
+#:
+#: `request_consent` is here for a stronger reason. Asking a worker whether they
+#: will waive their rest period is not waiving it - it is the one lawful route to
+#: a cover that needs one, and the opposite of deciding on their behalf. Judged as
+#: though it were the cover itself, the ask tripped `rest_waiver_required`, which
+#: no autonomy level can clear, so the operator approved the ask, the run resumed,
+#: and the policy raised the same question about the same ask. The rule belongs on
+#: `assign_cover`, where a waiver would actually be relied on, and it is enforced
+#: there. Asking twice is prevented too, but by the ConsentStore, which raises.
+_CREATES_NO_LIABILITY = frozenset({"notify_worker", "request_consent"})
 
 
 def build_hold_context_provider(
@@ -93,6 +104,15 @@ def build_hold_context_provider(
             shift_id=shift.shift_id, claims=claims, evidence=world,
         )
 
+        # Both minimums used to be answered without looking: the role one was a
+        # literal True, and the certification one asked whether the site employed
+        # a certified person *anywhere*, which is true of every site here. So the
+        # rule the Autonomy screen advertises could never fire. Ask the floor.
+        role_ok, cert_ok = meets_minimums(
+            site, schedule, shift, worker,
+            {w.worker_id: w for w in world.workers(site.site_id)},
+        )
+
         week_spend = Money(cents=sum(
             int(e.get("total_cents", 0)) for e in ledger
             if e.get("kind") in ("assign_cover", "cancel_shift")
@@ -107,15 +127,18 @@ def build_hold_context_provider(
             week_spend=week_spend,
             overtime_hours=max(0.0, hours_after - 40.0),
             shortfall_fraction=shortfall,
-            requires_rest_waiver=breakdown.requires_consent,
+            # A waiver that the worker has already granted is not an outstanding
+            # waiver. Reading `requires_consent` alone meant a cover the worker
+            # had agreed to in writing was still refused for wanting the
+            # agreement it already had.
+            requires_rest_waiver=(
+                breakdown.requires_consent
+                and not consent.has_granted(worker.worker_id, shift.shift_id)
+            ),
             worker_declined=world.has_declined(worker.worker_id, shift.shift_id)
             or consent.has_declined(worker.worker_id, shift.shift_id),
-            meets_role_minimum=True,
-            meets_certification_minimum=(
-                site.certified_handler_minimum == 0 or worker.is_certified("food_handler")
-                or any(w.is_certified("food_handler") for w in world.workers(site.site_id)
-                       if w.worker_id != shift.worker_id)
-            ),
+            meets_role_minimum=role_ok,
+            meets_certification_minimum=cert_ok,
             assessable=breakdown.lawful,
         )
 

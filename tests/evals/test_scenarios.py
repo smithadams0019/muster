@@ -48,6 +48,55 @@ def _price_option(world: SableCoffee, schedule, rules, shift: Shift, option: Cov
     )
 
 
+def _shift_starting(schedule, *, weekday: int, hour: int) -> Shift:
+    """The staffed shift starting at `hour` on that weekday of the posted week.
+
+    Anchored on when a shift runs rather than on its id. The seeded rota is built
+    from each day's demand curve, so ids move whenever the curve does; a test
+    pinned to `s-chi-20260730-close` stops finding anything the moment the week
+    is reseeded, and a test pinned to `w-chi-7` silently starts asserting about a
+    different person's ordinary shift.
+    """
+    day = WEEK_START + timedelta(days=weekday)
+    return next(
+        s for s in schedule.shifts
+        if s.worker_id is not None
+        and s.starts_at.date() == day.date()
+        and s.starts_at.hour == hour
+    )
+
+
+def _closing_shift(schedule, *, weekday: int) -> Shift:
+    """The staffed shift that runs latest on that weekday."""
+    day = WEEK_START + timedelta(days=weekday)
+    return max(
+        (s for s in schedule.shifts
+         if s.worker_id is not None and s.starts_at.date() == day.date()),
+        key=lambda s: s.ends_at,
+    )
+
+
+def _certified_closing_shift(world: SableCoffee, schedule) -> Shift:
+    """A day in the posted week whose last shift is worked by a certified handler.
+
+    Which day that is depends on how the rota fell out of the demand curve, so
+    the scenario looks for one rather than naming Thursday and asserting the
+    seed obliged.
+    """
+    for weekday in range(7):
+        shift = _closing_shift(schedule, weekday=weekday)
+        if world.worker(shift.worker_id).is_certified("food_handler"):
+            return shift
+    raise AssertionError("no day in the posted week closes with a certified handler")
+
+
+def _some_worker_free_for(world: SableCoffee, gap: Shift):
+    """A worker the enumerator would actually offer for `gap`."""
+    options = enumerate_cover_options(world, gap, at=world.now())
+    assert options, "the seeded roster must have someone free for this gap"
+    return world.worker(options[0].worker_id)
+
+
 def test_the_standby_list_is_empty_at_6am_and_every_remaining_cover_costs_money():
     """Oregon's standby list is the one carve-out that costs nothing — until nobody left on it will take it."""
     world = SableCoffee()
@@ -55,7 +104,7 @@ def test_the_standby_list_is_empty_at_6am_and_every_remaining_cover_costs_money(
 
     schedule = world.schedule("site-or", WEEK_START)
     rules = for_code("us-or", on=world.now().date())
-    gap = next(s for s in schedule.shifts if s.shift_id == "s-or-20260727-open")
+    gap = _shift_starting(schedule, weekday=0, hour=7)
 
     # Both Oregon workers on the standby list decline this shift. The list, for
     # this gap, is empty.
@@ -86,11 +135,10 @@ def test_the_same_sick_call_in_portland_chicago_and_new_york_costs_three_differe
         ("site-chi", "us-il-chicago"),
         ("site-nyc", "us-ny-nyc-fastfood"),
     ):
-        suffix = site_id.removeprefix("site-")
         schedule = world.schedule(site_id, WEEK_START)
         rules = for_code(code, on=world.now().date())
-        gap = next(s for s in schedule.shifts if s.shift_id == f"s-{suffix}-20260727-open")
-        cover = world.worker(f"w-{suffix}-4")  # the certified barista, free that morning at every site
+        gap = _shift_starting(schedule, weekday=0, hour=7)
+        cover = _some_worker_free_for(world, gap)
 
         result = price_change(
             rules=rules, kind=ChangeKind.ADD_SHIFT,
@@ -119,8 +167,8 @@ def test_an_agent_claims_the_swap_was_employee_requested_but_no_request_exists()
     world = SableCoffee()
     schedule = world.schedule("site-or", WEEK_START)
     rules = for_code("us-or", on=world.now().date())
-    gap = next(s for s in schedule.shifts if s.shift_id == "s-or-20260727-open")
-    worker = world.worker("w-or-4")
+    gap = _shift_starting(schedule, weekday=0, hour=7)
+    worker = _some_worker_free_for(world, gap)
 
     # No world.record_worker_request(...) call — the world holds no such evidence.
     claimed = price_change(
@@ -152,8 +200,8 @@ def test_an_agent_claims_the_standby_carve_out_in_chicago_where_it_does_not_exis
     world = SableCoffee()
     schedule = world.schedule("site-chi", WEEK_START)
     rules = for_code("us-il-chicago", on=world.now().date())
-    gap = next(s for s in schedule.shifts if s.shift_id == "s-chi-20260727-open")
-    worker = world.worker("w-chi-4")
+    gap = _shift_starting(schedule, weekday=0, hour=7)
+    worker = _some_worker_free_for(world, gap)
     claim = CarveOutClaim(CarveOut.STANDBY_LIST)
 
     assert CarveOut.STANDBY_LIST not in rules.carve_outs
@@ -181,12 +229,11 @@ def test_an_agent_claims_the_standby_carve_out_in_chicago_where_it_does_not_exis
 
 
 def test_covering_the_shift_would_leave_nobody_food_safety_certified_on_the_floor():
-    """As posted, Thursday's close at Sable Wicker is worked by a certified barista. Once the lead has gone
-    home at 16:00, that closer is the only certified handler left on the floor until closing."""
+    """A close at Sable Wicker worked by a certified barista. Once the lead has gone home, that closer is
+    the only certified handler left on the floor until closing."""
     world = SableCoffee()
     schedule = world.schedule("site-chi", WEEK_START)
-    gap = next(s for s in schedule.shifts if s.shift_id == "s-chi-20260730-close")
-    assert world.worker(gap.worker_id).is_certified("food_handler")
+    gap = _certified_closing_shift(world, schedule)
 
     def certified_on_duty(shifts: list[Shift], moment: datetime) -> bool:
         return any(
@@ -200,8 +247,9 @@ def test_covering_the_shift_would_leave_nobody_food_safety_certified_on_the_floo
     )
 
     options = enumerate_cover_options(world, gap, at=world.now())
-    cover = next(o for o in options if o.worker_id == "w-chi-7")
-    assert not world.worker(cover.worker_id).is_certified("food_handler")
+    cover = next(
+        o for o in options if not world.worker(o.worker_id).is_certified("food_handler")
+    )
 
     covered_shifts = [
         s if s.shift_id != gap.shift_id else replace(s, worker_id=cover.worker_id)
@@ -232,7 +280,7 @@ def test_the_cheapest_cover_is_a_clopening_and_it_is_the_only_one():
     world = SableCoffee()
     schedule = world.schedule("site-chi", WEEK_START)
     rules = for_code("us-il-chicago", on=world.now().date())
-    gap = next(s for s in schedule.shifts if s.shift_id == "s-chi-20260730-close")
+    gap = _certified_closing_shift(world, schedule)
 
     # Find the person who would actually be clopening rather than naming one:
     # a reseed moves who opened that morning, and a hard-coded id would quietly

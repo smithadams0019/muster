@@ -186,6 +186,9 @@ def build_hold_tools(
                 "total_cents": breakdown.total.cents,
                 "total": str(breakdown.total),
                 "requires_consent": breakdown.requires_consent,
+                # Say which consent, so request_consent is never a guess.
+                "consent_kind": ConsentKind.REST_WAIVER.value
+                if breakdown.requires_consent else None,
                 "rest_gap_hours": option.rest_gap_hours,
                 "carve_outs": [c.value for c in breakdown.carve_outs_applied],
                 "clauses": [line.clause for line in breakdown.lines],
@@ -239,7 +242,8 @@ def build_hold_tools(
             site_id=cached["site_id"], worker_id=worker_id, shift_id=shift_id,
             kind=cached["kind"], jurisdiction_code=cached["jurisdiction_code"],
             rulebook_effective_from=cached["rulebook_effective_from"],
-            breakdown=breakdown, decided_by=decided_by, consent=None, at=at,
+            breakdown=breakdown, decided_by=decided_by,
+            consent=consent.grant_for(worker_id, shift_id), at=at,
         )
         ledger.append({
             "kind": "assign_cover", "shift_id": shift_id, "worker_id": worker_id,
@@ -251,7 +255,13 @@ def build_hold_tools(
 
     @tool
     def request_consent(worker_id: str, shift_id: str, kind: str) -> Any:
-        """Ask a worker for consent, stating the premium they would be owed."""
+        """Ask a worker for consent, stating the premium they would be owed.
+
+        `kind` must be one of "rest_waiver" (the cover starts inside their
+        protected rest period), "extra_hours" or "shift_trade". Every option
+        `list_cover_options` returns that needs consent already carries the right
+        one in its `consent_kind` field - use that rather than composing one.
+        """
         resolved, error = _resolve_shift(world, clock, shift_id)
         if error:
             return {"error": error}
@@ -264,7 +274,13 @@ def build_hold_tools(
         try:
             consent_kind = ConsentKind(kind)
         except ValueError:
-            return {"error": f"unknown consent kind {kind!r}"}
+            # A refusal that does not say what would be accepted is a dead end.
+            # This one used to name only the rejected value, and a live run spent
+            # four calls guessing "rest_period_premium", "rest_period",
+            # "schedule_change" and "rest_period_waiver" before giving up and
+            # leaving the shift uncovered.
+            return {"error": f"unknown consent kind {kind!r}; use one of "
+                             f"{', '.join(k.value for k in ConsentKind)}"}
 
         option = _find_option(resolved.shift, worker_id)
         breakdown = _price_add_shift(world, clock, resolved, worker, option)
@@ -273,7 +289,16 @@ def build_hold_tools(
             request = consent.ask(
                 worker_id=worker_id, shift_id=shift_id, kind=consent_kind,
                 premium_owed=breakdown.total,
-                what_it_means=f"Muster is asking you to cover shift {shift_id}.",
+                # The person reading this is the worker, not an operator. NYC
+                # defines consent as agreement after a meaningful opportunity to
+                # decline, and "cover shift s-nyc-20260801-1422-6" is not an
+                # opportunity to decline anything - it is a database key.
+                what_it_means=(
+                    f"Muster is asking you to cover the "
+                    f"{resolved.shift.starts_at:%A} "
+                    f"{resolved.shift.starts_at:%H:%M}-{resolved.shift.ends_at:%H:%M} "
+                    f"shift at {resolved.site.name}."
+                ),
                 asked_at=clock(), expires_in=timedelta(hours=4),
             )
         except PermissionError as exc:

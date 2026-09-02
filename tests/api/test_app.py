@@ -252,3 +252,90 @@ def test_the_world_sends_certifications_and_standby_membership():
     assert on_standby, "nobody is on a standby list"
     assert all(w["site_id"] == "site-or" for w in on_standby), \
         "the standby carve-out exists only in Oregon"
+
+
+# -- consent ----------------------------------------------------------------
+
+
+def _ask(state, worker_id="w-or-1", shift_id="s-1"):
+    from datetime import timedelta
+
+    from muster.domain.types import ConsentKind, Money
+
+    return state.consent.ask(
+        worker_id=worker_id, shift_id=shift_id, kind=ConsentKind.REST_WAIVER,
+        premium_owed=Money.from_dollars("100.00"),
+        what_it_means="Muster is asking you to cover this.",
+        asked_at=state.world.now(), expires_in=timedelta(hours=4),
+    )
+
+
+def test_an_answered_consent_ask_stays_on_the_list_with_what_was_said():
+    """A decline is what stops Muster asking again, so it must remain visible.
+    Serving only the outstanding asks lost the answer the moment it arrived."""
+    client, state = _client()
+    request = _ask(state)
+    assert [c["request_id"] for c in client.get("/api/consent").json()] == [request.request_id]
+
+    client.post(f"/api/consent/{request.request_id}/answer",
+                json={"outcome": "declined", "channel": "console"})
+
+    body = client.get("/api/consent").json()
+    assert [c["request_id"] for c in body] == [request.request_id]
+    assert body[0]["outcome"] == "declined"
+    assert body[0]["answered_at"] is not None
+
+
+def test_granting_consent_sends_muster_back_to_finish_the_cover():
+    """The run that asked stopped at the ask. Once the worker has said yes, the
+    cover it was asking about is the thing that still needs doing."""
+    runs = []
+
+    async def assigns(state, disruption):
+        runs.append(disruption.shift_id)
+        state.ledger.append({
+            "kind": "assign_cover", "shift_id": disruption.shift_id,
+            "worker_id": "w-or-1", "total_cents": 10_000,
+        })
+        return HoldRunResult(False, None, None, None, "assigned")
+
+    client, state = _client(hold_runner=assigns)
+    request = _ask(state, shift_id="s-99")
+
+    body = client.post(f"/api/consent/{request.request_id}/answer",
+                       json={"outcome": "granted", "channel": "console"}).json()
+    assert runs == ["s-99"]
+    assert body["status"] == "covered"
+
+
+def test_declining_starts_nothing():
+    runs = []
+
+    async def assigns(state, disruption):
+        runs.append(disruption.shift_id)
+        return HoldRunResult(False, None, None, None, "assigned")
+
+    client, state = _client(hold_runner=assigns)
+    request = _ask(state, shift_id="s-99")
+
+    body = client.post(f"/api/consent/{request.request_id}/answer",
+                       json={"outcome": "declined", "channel": "console"}).json()
+    assert runs == []
+    assert body["status"] == "declined"
+
+
+def test_a_grant_whose_run_pauses_again_lands_back_in_the_inbox():
+    async def pauses(state, disruption):
+        return HoldRunResult(
+            True, "int-1", "$145.00 exceeds the conservative per-incident limit of $0.00.",
+            {"messages": []}, "held",
+            [{"rule": "cost_over_budget", "detail": "over budget"}],
+        )
+
+    client, state = _client(hold_runner=pauses)
+    request = _ask(state, shift_id="s-99")
+
+    body = client.post(f"/api/consent/{request.request_id}/answer",
+                       json={"outcome": "granted", "channel": "console"}).json()
+    assert body["status"] == "awaiting_decision"
+    assert client.get("/api/decisions").json()[0]["decision_id"] == body["decision_id"]

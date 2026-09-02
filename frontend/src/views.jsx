@@ -355,64 +355,105 @@ export function Decisions() {
 
 // -- Consent --------------------------------------------------------------
 
+const CONSENT_KINDS = {
+  rest_waiver: 'rest-period waiver',
+  clopening: 'clopening',
+  schedule_change: 'schedule change',
+}
+
+const CONSENT_OUTCOMES = {
+  granted: { label: 'granted', className: 'vw-badge-posted' },
+  declined: { label: 'declined — final', className: 'vw-badge-consent' },
+  expired: { label: 'no answer — counts as a decline', className: 'vw-badge-consent' },
+}
+
 export function Consent() {
   const world = useStore((s) => s.world)
   const consent = useStore((s) => s.consent) || []
   const busy = useStore((s) => s.busy) || {}
   const answerConsent = useStore((s) => s.answerConsent)
 
+  // The screen keeps answered asks. A decline is legally final — it is the
+  // record that stops Muster asking again — so a list that showed only what was
+  // outstanding lost the answer at the moment it arrived.
+  const outstanding = consent.filter((c) => !c.outcome)
+  const settled = consent.filter((c) => c.outcome)
+
+  function row(c) {
+    const now = world?.now ? new Date(world.now) : null
+    const expired = !c.outcome && now ? new Date(c.expires_at) <= now : false
+    const busyNow = Boolean(busy[`consent:${c.request_id}`])
+    const outcome = c.outcome ? CONSENT_OUTCOMES[c.outcome] : null
+
+    return (
+      <div className="vw-row" key={c.request_id}>
+        <div className="vw-row-main">
+          <span className="vw-row-title">
+            {workerName(world, c.worker_id)} — {CONSENT_KINDS[c.kind] || c.kind.replace(/_/g, ' ')}
+          </span>
+          <span className="vw-row-sub">{c.what_it_means}</span>
+          <span className="vw-row-sub">
+            Owed {formatDollarsStr(c.premium_owed)} · asked {fmtDateTime(c.asked_at)}
+            {c.answered_at
+              ? ` · answered ${fmtDateTime(c.answered_at)}`
+              : ` · expires ${fmtDateTime(c.expires_at)}`}
+          </span>
+        </div>
+        <div className="vw-row-actions">
+          {outcome ? (
+            <span className={`vw-badge ${outcome.className}`}>{outcome.label}</span>
+          ) : expired ? (
+            <span className="vw-badge vw-badge-consent">no answer — counts as a decline</span>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="vw-btn vw-btn-sm"
+                disabled={busyNow}
+                onClick={() => answerConsent?.(c.request_id, 'granted')?.catch(() => {})}
+              >
+                They said yes
+              </button>
+              <button
+                type="button"
+                className="vw-btn vw-btn-sm vw-btn-danger"
+                disabled={busyNow}
+                onClick={() => answerConsent?.(c.request_id, 'declined')?.catch(() => {})}
+              >
+                They said no
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="vw-pad">
       <ScreenStyle />
-      {consent.length === 0 ? (
-        <Empty>No outstanding consent asks.</Empty>
-      ) : (
-        <div className="vw-card">
-          {consent.map((c) => {
-            const now = world?.now ? new Date(world.now) : null
-            const expired = now ? new Date(c.expires_at) <= now : false
-            const busyNow = Boolean(busy[`consent:${c.request_id}`])
+      <p className="vw-lede">
+        Muster asks; it never answers on anyone's behalf. A yes here sends it back to
+        finish the cover. A no is final — that person is not asked about this shift again.
+      </p>
 
-            return (
-              <div className="vw-row" key={c.request_id}>
-                <div className="vw-row-main">
-                  <span className="vw-row-title">
-                    {workerName(world, c.worker_id)} — {c.kind.replace('_', ' ')}
-                  </span>
-                  <span className="vw-row-sub">{c.what_it_means}</span>
-                  <span className="vw-row-sub">
-                    Owed {formatDollarsStr(c.premium_owed)} · asked {fmtDateTime(c.asked_at)} · expires{' '}
-                    {fmtDateTime(c.expires_at)}
-                  </span>
-                </div>
-                <div className="vw-row-actions">
-                  {expired ? (
-                    <span className="vw-badge vw-badge-consent">expired — final</span>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="vw-btn vw-btn-sm"
-                        disabled={busyNow}
-                        onClick={() => answerConsent?.(c.request_id, 'granted')?.catch(() => {})}
-                      >
-                        They said yes
-                      </button>
-                      <button
-                        type="button"
-                        className="vw-btn vw-btn-sm vw-btn-danger"
-                        disabled={busyNow}
-                        onClick={() => answerConsent?.(c.request_id, 'declined')?.catch(() => {})}
-                      >
-                        They said no
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+      {outstanding.length === 0 && settled.length === 0 ? (
+        <Empty>No consent has been asked for yet.</Empty>
+      ) : (
+        <>
+          {outstanding.length > 0 && (
+            <div className="vw-card">
+              <div className="vw-card-title">Waiting on an answer</div>
+              {outstanding.map(row)}
+            </div>
+          )}
+          {settled.length > 0 && (
+            <div className="vw-card">
+              <div className="vw-card-title">Answered</div>
+              {settled.map(row)}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -670,8 +711,14 @@ export function Receipts() {
                 )}
                 <span className="vw-row-sub">
                   Decided by {r.decided_by}
-                  {r.consent ? ` · consent ${r.consent.outcome}` : ''}
                 </span>
+                {r.consent && (
+                  <span className="vw-row-sub">
+                    {workerName(world, r.consent.worker_id)}{' '}
+                    {r.consent.outcome} {r.consent.kind.replace(/_/g, ' ')} by{' '}
+                    {r.consent.channel} on {fmtDateTime(r.consent.answered_at || r.consent.asked_at)}
+                  </span>
+                )}
               </div>
               <span className="vw-badge vw-badge-posted vw-mono">{formatDollarsStr(r.total)}</span>
             </div>

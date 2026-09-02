@@ -4,15 +4,15 @@ First the problem, because it is stranger than it looks. Somewhere right now a m
 
 And the enforcement is not theoretical.
 
-New York City settled with Starbucks for thirty eight point nine million dollars, after finding more than five hundred thousand violations. Chipotle settled for twenty million. Dunkin, Taco Bell and Walgreens have all settled over the same law.
+New York City settled with Starbucks for thirty eight point nine million dollars, after more than five hundred thousand violations. Chipotle settled for twenty million. Dunkin, Taco Bell and Walgreens have all settled over the same law.
 
 Those are companies with legal departments. The person I built this for runs three coffee shops and faces the identical rulebook.
 
-Here is what surprised me when I read the ordinances. The rules are not vague. They are arithmetic. Oregon owes one hour at the regular rate to add a shift. Chicago owes a quarter over base for working inside the rest period. New York owes ten, twenty, forty five or seventy five dollars depending on the notice given.
+Here is what surprised me when I read them. The rules are not vague. They are arithmetic. Oregon owes an hour at the regular rate to add a shift. Chicago owes a quarter over base for working inside the rest period. New York owes ten, twenty, forty five or seventy five dollars, on the notice given.
 
 Every one computable. Almost nobody computes them.
 
-Because the moment it matters is six in the morning. A hole in the rota, four legal ways to fill it, and two of them need someone's permission. Nobody has time to work that out at six.
+Because the moment it matters is six in the morning. A hole in the rota, four legal ways to fill it, two needing someone's permission. Nobody works that out at six.
 
 So Muster does the deciding.
 
@@ -30,7 +30,7 @@ That is not my opinion about agents. Oregon requires the worker's own consent, N
 
 Strands Agents runs two loops on Bedrock. Claude reasons and never does the arithmetic: the premiums, the rest remedies and the totals are pure functions, which is why they are testable. It also ships an MCP server over the compliance engine, read only, so another agent can ask what a change costs but cannot change anyone's week.
 
-Two hundred and twenty six tests run offline, and it is live on AWS right now.
+Two hundred and forty three tests run offline, and it is live on AWS right now.
 
 Let's use it.
 
@@ -40,7 +40,7 @@ Schedule is the week. The panel at the top is cover against demand for the day I
 
 Decisions is the only place Muster interrupts me. Everything else it handled on its own.
 
-Consent is the asks out with workers, and what they answered. A decline is final.
+Consent is every ask that has gone out to a worker, and what they said back. A decline is final — Muster does not ask that person again.
 
 People is the roster: each person's rate, the hours they were promised, their certifications, and who is on the standby list. That list exists only in Oregon, because Oregon is the only one of these cities that offers the carve-out.
 

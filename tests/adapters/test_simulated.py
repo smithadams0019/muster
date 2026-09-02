@@ -20,7 +20,7 @@ def test_the_clock_is_frozen_so_notice_bands_are_reproducible():
 def test_the_same_seed_produces_the_same_roster_twice():
     a = [w.worker_id for w in SableCoffee(seed=7).workers()]
     b = [w.worker_id for w in SableCoffee(seed=7).workers()]
-    assert a == b and len(a) == 24
+    assert a == b and len(a) == 36
 
 
 def test_every_site_has_at_least_one_shift_lead_and_one_certified_handler():

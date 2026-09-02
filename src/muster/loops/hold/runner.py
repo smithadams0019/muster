@@ -38,9 +38,13 @@ Work in this order:
    recompute them and do not estimate.
 2. Take the cheapest option that does not require someone's consent. Call
    assign_cover with its option_id.
-3. If the only options require consent, call request_consent and stop there. You may
-   never decide on a worker's behalf that they will work inside their rest period.
-4. After a cover is assigned, call notify_worker.
+3. If every option requires consent, call request_consent for the cheapest one
+   only - one person, not several - and stop there. You may never decide on a
+   worker's behalf that they will work inside their rest period, and asking five
+   people at once to give up the same rest period is not asking, it is pressure.
+4. If an option's requires_consent is true and that worker has already granted it,
+   assign_cover is the right call: the consent it needs is on the record.
+5. After a cover is assigned, call notify_worker.
 
 Never ask a worker who has already declined this shift.
 Never invent an option_id, worker_id or shift_id. Use only what the tools returned.
