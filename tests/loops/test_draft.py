@@ -83,3 +83,36 @@ def test_proposing_for_a_worker_at_another_site_is_refused():
     result = tools["propose_shift"](site_id="site-or", worker_id="w-nyc-1", day="2026-08-03",
                                     start_hour=6, end_hour=14, role="barista")
     assert "error" in result
+
+
+def test_a_proposed_shift_can_be_taken_back_out():
+    """Generate-and-repair needs a repair primitive.
+
+    propose_shift was append-only, so an agent that proposed an overlapping
+    shift could see the breach in check_draft and had no way to undo it. In a
+    live run it gave up and asked the operator to delete the shifts through an
+    admin panel that does not exist.
+    """
+    _, _, tools = _tools()
+    added = tools["propose_shift"](site_id="site-or", worker_id="w-or-1", day="2026-08-03",
+                                   start_hour=6, end_hour=14, role="barista")
+    assert tools["list_draft"](site_id="site-or")
+    removed = tools["remove_shift"](site_id="site-or", shift_id=added["shift_id"])
+    assert removed["removed"] == added["shift_id"]
+    assert tools["list_draft"](site_id="site-or") == []
+
+
+def test_removing_a_shift_clears_the_breach_it_caused():
+    _, _, tools = _tools()
+    tools["propose_shift"](site_id="site-or", worker_id="w-or-1", day="2026-08-03",
+                           start_hour=14, end_hour=22, role="barista")
+    clash = tools["propose_shift"](site_id="site-or", worker_id="w-or-1", day="2026-08-04",
+                                   start_hour=6, end_hour=14, role="barista")
+    assert any(p["kind"] == "rest_breach" for p in tools["check_draft"](site_id="site-or"))
+    tools["remove_shift"](site_id="site-or", shift_id=clash["shift_id"])
+    assert not any(p["kind"] == "rest_breach" for p in tools["check_draft"](site_id="site-or"))
+
+
+def test_removing_a_shift_that_is_not_in_the_draft_is_an_error():
+    _, _, tools = _tools()
+    assert "error" in tools["remove_shift"](site_id="site-or", shift_id="draft-nope")

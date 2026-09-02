@@ -44,6 +44,16 @@ Work in this order:
    good-faith hours, and missing certified-handler or role-minimum coverage.
 5. Fix every problem check_draft reports, then call check_draft again. Repeat
    until it returns an empty list.
+
+   To fix a problem you may add a shift with propose_shift, or take one back out
+   with remove_shift. Use list_draft to see what is currently in the draft and to
+   find the shift_id you need. A rest breach or an overlap is almost always fixed
+   by removing a shift rather than adding another one - if you proposed something
+   you did not mean, remove it and propose the shift you did mean. The draft is
+   not posted, so removing from it costs nothing and changes nobody's week.
+
+   Never ask the operator to edit the draft for you. There is no admin panel;
+   remove_shift is how a draft is corrected.
 6. Call post_schedule.
 
 Never invent a worker_id, a day, or an hour. Use only what demand_for_week and

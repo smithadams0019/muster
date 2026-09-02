@@ -269,6 +269,44 @@ def build_draft_tools(
         }
 
     @tool
+    def remove_shift(site_id: str, shift_id: str) -> dict[str, Any]:
+        """Take one shift back out of the working draft.
+
+        Generate-and-repair needs a repair primitive. Without this, `propose_shift`
+        was append-only: an agent that proposed an overlapping shift could see the
+        breach in `check_draft` and had no way to undo it, so it could never
+        converge. In a real run it stopped and asked the operator to delete the
+        shifts through an admin panel that does not exist.
+
+        Unguarded on purpose. A draft is not posted, so removing a line from it
+        changes nobody's week and owes nobody a premium. Only `post_schedule` is
+        consequential.
+        """
+        if world.site(site_id) is None:
+            return {"error": f"unknown site {site_id!r}"}
+        shifts = state.get(site_id, [])
+        remaining = [sh for sh in shifts if sh.shift_id != shift_id]
+        if len(remaining) == len(shifts):
+            return {"error": f"no shift {shift_id!r} in this site's draft"}
+        state[site_id] = remaining
+        return {"removed": shift_id, "shifts_left": len(remaining)}
+
+    @tool
+    def list_draft(site_id: str) -> list[dict[str, Any]] | dict[str, str]:
+        """Every shift currently in the working draft, so a repair can name one."""
+        if world.site(site_id) is None:
+            return {"error": f"unknown site {site_id!r}"}
+        return [
+            {
+                "shift_id": sh.shift_id, "worker_id": sh.worker_id,
+                "role": sh.role.value, "day": sh.starts_at.date().isoformat(),
+                "start_hour": sh.starts_at.hour, "end_hour": sh.ends_at.hour,
+                "hours": sh.hours,
+            }
+            for sh in sorted(state.get(site_id, []), key=lambda x: x.starts_at)
+        ]
+
+    @tool
     def check_draft(site_id: str) -> list[dict[str, Any]]:
         """Every problem the current draft has: uncovered hours, rest breaches,
 
@@ -304,4 +342,5 @@ def build_draft_tools(
         state[site_id] = list(ordered)
         return {"posted_at": posted_at.isoformat(), "site_id": site_id, "shift_ids": shift_ids}
 
-    return [demand_for_week, list_workers, propose_shift, check_draft, post_schedule]
+    return [demand_for_week, list_workers, propose_shift, list_draft,
+            remove_shift, check_draft, post_schedule]
