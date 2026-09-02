@@ -91,3 +91,39 @@ def test_requesting_consent_from_a_worker_who_declined_is_refused():
 def test_an_unknown_shift_id_returns_an_error_rather_than_an_empty_list():
     _, _, _, _, tools = _tools()
     assert "error" in tools["list_cover_options"](shift_id="s-nope")
+
+
+def test_a_fresh_tools_instance_still_honours_an_option_the_previous_one_offered():
+    """A resumed run is a new agent with a new closure, so its cache is empty.
+
+    The operator approves an option the *previous* instance priced; without
+    re-deriving, assign_cover refused it as unknown, the model tried a different
+    worker, and that escalated again — approving cloned the question instead of
+    answering it.
+    """
+    world = SableCoffee()
+    shift = _open_shift(world)
+
+    _, _, _, _, first = _tools(world)
+    offered = first["list_cover_options"](shift_id=shift.shift_id)[0]
+
+    # A brand-new tools closure over the same world, as the resumer builds.
+    _, ledger, receipts, _, second = _tools(world)
+    result = second["assign_cover"](
+        shift_id=shift.shift_id, worker_id=offered["worker_id"],
+        option_id=offered["option_id"],
+    )
+    assert "error" not in result
+    assert any(e["kind"] == "assign_cover" for e in ledger)
+    assert len(receipts.all()) == 1
+
+
+def test_an_invented_option_id_is_still_refused_after_re_deriving():
+    world = SableCoffee()
+    shift = _open_shift(world)
+    _, ledger, _, _, tools = _tools(world)
+    result = tools["assign_cover"](
+        shift_id=shift.shift_id, worker_id="w-nyc-6", option_id="opt-made-up",
+    )
+    assert "error" in result
+    assert ledger == []

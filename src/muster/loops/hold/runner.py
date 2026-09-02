@@ -73,10 +73,12 @@ def build_hold_agent(
     consent: ConsentStore,
     policy: EscalationPolicy,
     trail: AuditTrail,
+    decided_by: str = "muster",
 ) -> Agent:
     return Agent(
         model=MODEL_ID,
-        tools=build_hold_tools(world, ledger, receipts, consent, clock=world.now),
+        tools=build_hold_tools(world, ledger, receipts, consent, clock=world.now,
+                               decided_by=decided_by),
         interventions=[PostingDependencyGuard(ledger, trail), policy],
         hooks=[trail],
         system_prompt=SYSTEM_PROMPT,
@@ -97,7 +99,22 @@ def describe_disruption(world: WorldAdapter, disruption: Disruption) -> str:
     )
 
 
+# strands 1.54 requires a preset or an explicit include list: calling
+# take_snapshot() bare raises SnapshotException("No snapshot fields
+# resolved"), which would 500 on every escalation - the one path that
+# must never fail. "session" captures messages, state, conversation and
+# interrupt state, which is exactly what a resume needs.
 def _result_from(agent: Agent, raw: Any, policy: EscalationPolicy) -> HoldRunResult:
+    """Build a result, reading the interrupt's real fields rather than guessing.
+
+    `strands.interrupt.Interrupt` carries `id`, `name`, `reason` and `response`.
+    An earlier version reached for `interrupt_id` and `prompt` through
+    `getattr(..., default)`, which meant a wrong attribute name produced a
+    cheerful `None` instead of an error - and the resume then failed hours later
+    with `interrupt_id=<None> | no interrupt found`, long after the human had
+    answered and the decision had been consumed. Read the attributes directly so
+    a future SDK change breaks here, loudly, instead of there, silently.
+    """
     interrupts = getattr(raw, "interrupts", None) or []
     if not interrupts:
         return HoldRunResult(False, None, None, None, str(raw))
@@ -105,10 +122,10 @@ def _result_from(agent: Agent, raw: Any, policy: EscalationPolicy) -> HoldRunRes
     hits = rules_that_paused(raw, policy)
     return HoldRunResult(
         paused=True,
-        interrupt_id=getattr(interrupt, "interrupt_id", None),
+        interrupt_id=interrupt.id,
         interrupt_reason=hits[0].rule if hits else "unknown",
-        snapshot=agent.take_snapshot().__dict__,
-        text=getattr(interrupt, "prompt", "") or str(raw),
+        snapshot=agent.take_snapshot(preset="session").__dict__,
+        text=interrupt.reason or str(raw),
         rule_hits=[{"rule": h.rule, "detail": h.detail} for h in hits],
     )
 

@@ -53,3 +53,19 @@ def test_the_week_spend_is_summed_from_the_ledger():
     shift = next(s for s in schedule.shifts if s.starts_at.hour == 7)
     context = provider("assign_cover", {"shift_id": shift.shift_id, "worker_id": "w-or-2"})
     assert context.week_spend.cents == 12000
+
+
+def test_notifying_a_worker_does_not_charge_the_operator_twice():
+    """Approving a $45 cover then being asked to approve the same $45 again to
+    tell the worker is one decision billed twice. The dependency guard already
+    refuses any notification without an approved cover behind it."""
+    world, provider = _provider()
+    schedule = world.schedule("site-nyc", datetime(2026, 7, 27, tzinfo=TZ))
+    shift = next(s for s in schedule.shifts if s.starts_at.hour == 7)
+
+    assigning = provider("assign_cover", {"shift_id": shift.shift_id, "worker_id": "w-nyc-6"})
+    notifying = provider("notify_worker", {"shift_id": shift.shift_id, "worker_id": "w-nyc-6"})
+
+    assert assigning.cost.cents > 0
+    assert notifying.cost.cents == 0
+    assert notifying.assessable is True

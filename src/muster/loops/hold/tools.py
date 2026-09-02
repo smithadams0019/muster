@@ -98,8 +98,16 @@ def build_hold_tools(
     receipts: ReceiptBook,
     consent: ConsentStore,
     clock: Clock,
+    decided_by: str = "muster",
 ) -> list[Any]:
-    """The six tools, closed over one world, one ledger and one priced-option cache."""
+    """The six tools, closed over one world, one ledger and one priced-option cache.
+
+    `decided_by` is written onto every receipt. It stays "muster" for a run the
+    agent completed alone, and becomes the operator's name on a resumed run,
+    because a change a person authorised must not be recorded as the agent's.
+    The receipt is the artefact an investigator reads; "who decided" is the first
+    thing they look for.
+    """
 
     #: option_id -> what it takes to honour it. Filled by `list_cover_options`, read
     #: by `explain_option` and `assign_cover`. Never trust an option_id that is not
@@ -112,6 +120,39 @@ def build_hold_tools(
              if o.worker_id == worker_id),
             None,
         )
+
+    def _reprice_into_cache(shift_id: str) -> None:
+        """Re-derive and cache every priced option for a shift.
+
+        A resumed run is a *new* agent with a new tools closure, so this cache is
+        empty even though the operator has just approved an option the previous
+        instance offered. Without this, assign_cover refused that option as
+        unknown, the model tried a different worker, and that escalated again -
+        so approving a decision produced a fresh copy of the same question.
+
+        Re-deriving costs one enumeration and keeps the guarantee intact: an
+        option must still be one `enumerate_cover_options` produces and
+        `price_change` prices, so an id the model invented is still refused.
+        """
+        resolved, error = _resolve_shift(world, clock, shift_id)
+        if error:
+            return
+        for option in enumerate_cover_options(world, resolved.shift, at=clock()):
+            worker = world.worker(option.worker_id)
+            if worker is None:
+                continue
+            breakdown = _price_add_shift(world, clock, resolved, worker, option)
+            if not breakdown.lawful:
+                continue
+            priced[option.option_id] = {
+                "shift_id": resolved.shift.shift_id,
+                "worker_id": worker.worker_id,
+                "site_id": resolved.site.site_id,
+                "jurisdiction_code": resolved.site.jurisdiction_code,
+                "rulebook_effective_from": resolved.rules.effective_from.isoformat(),
+                "kind": option.kind,
+                "breakdown": breakdown,
+            }
 
     @tool
     def list_cover_options(shift_id: str) -> Any:
@@ -184,6 +225,9 @@ def build_hold_tools(
         """
         cached = priced.get(option_id)
         if cached is None:
+            _reprice_into_cache(shift_id)
+            cached = priced.get(option_id)
+        if cached is None:
             return {"error": f"unknown option_id {option_id!r}; call list_cover_options first"}
         if cached["shift_id"] != shift_id or cached["worker_id"] != worker_id:
             return {"error": f"option {option_id!r} was never offered for shift "
@@ -195,7 +239,7 @@ def build_hold_tools(
             site_id=cached["site_id"], worker_id=worker_id, shift_id=shift_id,
             kind=cached["kind"], jurisdiction_code=cached["jurisdiction_code"],
             rulebook_effective_from=cached["rulebook_effective_from"],
-            breakdown=breakdown, decided_by="muster", consent=None, at=at,
+            breakdown=breakdown, decided_by=decided_by, consent=None, at=at,
         )
         ledger.append({
             "kind": "assign_cover", "shift_id": shift_id, "worker_id": worker_id,
@@ -289,7 +333,7 @@ def build_hold_tools(
             site_id=resolved.site.site_id, worker_id=worker.worker_id, shift_id=shift_id,
             kind=ChangeKind.CANCEL_SHIFT, jurisdiction_code=resolved.site.jurisdiction_code,
             rulebook_effective_from=resolved.rules.effective_from.isoformat(),
-            breakdown=breakdown, decided_by="muster", consent=None, at=at,
+            breakdown=breakdown, decided_by=decided_by, consent=None, at=at,
         )
         ledger.append({
             "kind": "cancel_shift", "shift_id": shift_id, "worker_id": worker.worker_id,

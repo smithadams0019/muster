@@ -1,0 +1,37 @@
+:root {
+  --ground: #ffffff;
+  --surface: #f7f9f9;
+  --surface-2: #eff3f4;
+  --line: #eff3f4;
+  --line-strong: #cfd9de;
+
+  --ink: #0f1419;
+  --ink-2: #536471;
+  --ink-3: #8b98a5;
+
+  --held: #b45309;
+  --held-tint: #fdf6ec;
+  --critical: #b42318;
+  --critical-tint: #fef4f3;
+  --cleared: #067647;
+  --cleared-tint: #f0f9f4;
+
+  --btn: #0f1419;
+  --btn-ink: #ffffff;
+
+  --r-card: 16px;
+  --r-pill: 9999px;
+
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --fs-base: 15px;
+  --lh-base: 20px;
+
+  /* layout */
+  --col-left: 275px;
+  --col-center: 600px;
+  --col-right: 350px;
+  --shell-max: 1265px;
+}

@@ -26,6 +26,12 @@ from muster.policy.rules import CoverContext
 from muster.rulebook.loader import for_code
 
 
+#: Guarded because they reach a person, but they create no new money. The cost
+#: was approved when the cover was assigned; charging it again at notification
+#: time would ask the operator to approve one decision twice.
+_CREATES_NO_LIABILITY = frozenset({"notify_worker"})
+
+
 def build_hold_context_provider(
     world: WorldAdapter,
     ledger: list[dict[str, Any]],
@@ -35,6 +41,20 @@ def build_hold_context_provider(
     def provide(tool_name: str, args: dict[str, Any]) -> CoverContext | None:
         if tool_name not in GUARDED_TOOLS:
             return None
+
+        if tool_name in _CREATES_NO_LIABILITY:
+            # Telling a worker about a change that is already committed creates
+            # no new liability, so pricing it charges the operator twice for one
+            # decision: they approved a $45 cover, and then notifying the worker
+            # asked them to approve the same $45 again. The dependency guard has
+            # already refused any notification without an approved cover behind
+            # it, so there is nothing left here for the policy to protect.
+            return CoverContext(
+                cost=Money.zero(), week_spend=Money.zero(), overtime_hours=0.0,
+                shortfall_fraction=0.0, requires_rest_waiver=False,
+                worker_declined=False, meets_role_minimum=True,
+                meets_certification_minimum=True, assessable=True,
+            )
 
         shift = world.shift(args.get("shift_id", ""))
         worker = world.worker(args.get("worker_id", ""))

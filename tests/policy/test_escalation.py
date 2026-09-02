@@ -74,3 +74,35 @@ def test_a_clean_call_clears_the_last_hits():
 def test_before_tool_call_is_defined_on_the_class_not_the_instance():
     """Strands inspects the class; an instance attribute silently disables the guard."""
     assert "before_tool_call" in EscalationPolicy.__dict__
+
+
+def test_a_structured_decision_record_counts_as_approval():
+    """Strands' default evaluator accepts only True or "yes".
+
+    Muster answers with a record - outcome, who, role, note - because all four
+    end up on the receipt. Before this, that record read as "not approved": the
+    operator pressed Approve, the run resumed, the same call was refused again,
+    and the policy asked an identical question. Approving cloned the question.
+    """
+    from muster.policy.escalation import approves
+
+    assert approves({"outcome": "approve", "by": "Roger K", "role": "operator"}) is True
+    assert approves({"outcome": "decline", "by": "Roger K"}) is False
+    assert approves({"decision": "approve", "by": "Roger K", "role": "operator"}) is True
+    assert approves({"decision": "APPROVE "}) is True
+    assert approves({"decision": "decline", "by": "Roger K"}) is False
+    assert approves({"by": "Roger K"}) is False          # no outcome is not approval
+    assert approves(True) is True
+    assert approves("yes") is True
+    assert approves("no") is False
+    assert approves(None) is False
+
+
+def test_the_confirm_carries_musters_evaluator_not_the_sdk_default():
+    from muster.policy.escalation import approves
+
+    policy = EscalationPolicy(
+        AutonomyLevel.BALANCED, lambda name, args: _ctx(cost=Money.from_dollars("120.00"))
+    )
+    action = policy.before_tool_call(_event("assign_cover"))
+    assert action.evaluate is approves

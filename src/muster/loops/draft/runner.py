@@ -92,6 +92,11 @@ def build_draft_agent(
     )
 
 
+# strands 1.54 requires a preset or an explicit include list: calling
+# take_snapshot() bare raises SnapshotException("No snapshot fields
+# resolved"), which would 500 on every escalation - the one path that
+# must never fail. "session" captures messages, state, conversation and
+# interrupt state, which is exactly what a resume needs.
 def _result_from(agent: Agent, raw: Any, policy: EscalationPolicy) -> DraftRunResult:
     interrupts = getattr(raw, "interrupts", None) or []
     if not interrupts:
@@ -100,10 +105,10 @@ def _result_from(agent: Agent, raw: Any, policy: EscalationPolicy) -> DraftRunRe
     hits = rules_that_paused(raw, policy)
     return DraftRunResult(
         paused=True,
-        interrupt_id=getattr(interrupt, "interrupt_id", None),
+        interrupt_id=interrupt.id,
         interrupt_reason=hits[0].rule if hits else "unknown",
-        snapshot=agent.take_snapshot().__dict__,
-        text=getattr(interrupt, "prompt", "") or str(raw),
+        snapshot=agent.take_snapshot(preset="session").__dict__,
+        text=interrupt.reason or str(raw),
         rule_hits=[{"rule": h.rule, "detail": h.detail} for h in hits],
     )
 

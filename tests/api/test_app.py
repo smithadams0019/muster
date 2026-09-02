@@ -46,10 +46,29 @@ def test_the_world_reports_which_rulebook_governs_each_site():
 
 
 def test_a_covered_disruption_reports_covered_and_leaves_no_decision():
-    client, state = _client()
+    """Covered means the ledger says somebody was assigned - nothing weaker."""
+    async def assigns(state, disruption):
+        state.ledger.append({
+            "kind": "assign_cover", "shift_id": disruption.shift_id,
+            "worker_id": "w-1", "total_cents": 0,
+        })
+        return HoldRunResult(False, None, None, None, "assigned")
+
+    client, _ = _client(hold_runner=assigns)
     body = client.post("/api/disruptions", json=DISRUPTION).json()
     assert body["status"] == "covered"
     assert client.get("/api/decisions").json() == []
+
+
+def test_a_run_that_assigned_nobody_is_never_reported_as_covered():
+    """The regression: a fallback searched the agent's closing message for the
+    word "cover", so a run whose message was "I could not cover this shift"
+    reported success while the ledger was empty."""
+    async def covers_nobody(state, disruption):
+        return HoldRunResult(False, None, None, None, "I could not cover this shift")
+
+    client, _ = _client(hold_runner=covers_nobody)
+    assert client.post("/api/disruptions", json=DISRUPTION).json()["status"] == "uncovered"
 
 
 def test_a_held_disruption_lands_in_the_inbox_with_its_rules_named():

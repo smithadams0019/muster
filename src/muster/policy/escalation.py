@@ -26,6 +26,39 @@ GUARDED_TOOLS: frozenset[str] = frozenset({
 
 UNASSESSABLE = "unassessable"
 
+#: Responses that mean the operator said yes, as free text.
+_APPROVING_WORDS = frozenset({"approve", "approved", "yes", "y", "true"})
+
+
+def approves(response: Any) -> bool:
+    """Whether a human's answer to a Confirm means "go ahead".
+
+    Strands' `default_evaluate` accepts only `True` or the string "yes". Muster
+    answers with a structured record instead - the outcome, who decided, their
+    role and their note - because every one of those fields ends up on the
+    receipt an investigator would read.
+
+    Without this, that record evaluated as "not approved": the operator pressed
+    Approve, the run resumed, the same tool call was refused again, the agent
+    retried, and the policy raised an identical question. Approving produced a
+    fresh copy of the question it was answering.
+    """
+    if isinstance(response, dict):
+        # The API answers with "outcome"; the SDK's own examples use "decision".
+        # Accept either rather than depending on which of the two a caller sends,
+        # because getting it wrong does not fail loudly - it silently reads as a
+        # refusal, and the operator's Approve turns into another identical
+        # question. Only these two keys count: an unrecognised shape is a no.
+        for key in ("outcome", "decision"):
+            if key in response:
+                return str(response[key]).strip().lower() in _APPROVING_WORDS
+        return False
+    if response is True:
+        return True
+    if isinstance(response, str):
+        return response.strip().lower() in _APPROVING_WORDS
+    return False
+
 
 class EscalationPolicy(InterventionHandler):
     name = "muster-escalation"
@@ -64,6 +97,7 @@ class EscalationPolicy(InterventionHandler):
         return Confirm(
             prompt=" ".join(hit.detail for hit in hits) + " Approve this?",
             reason=hits[0].rule,
+            evaluate=approves,
         )
 
 
@@ -76,7 +110,12 @@ def rules_that_paused(result: Any, policy: EscalationPolicy) -> list[RuleHit]:
     """
     interrupts = getattr(result, "interrupts", None) or []
     for interrupt in interrupts:
-        hits = policy.escalations.get(getattr(interrupt, "tool_use_id", ""), None)
-        if hits:
-            return hits
+        # Interrupt.id looks like
+        #   "v1:before_tool_call:tooluse_R0kIpR...:b174861a-..."
+        # so the tool-use id the policy keyed on is embedded rather than exposed
+        # as its own attribute. Match on containment rather than equality, and
+        # never invent an attribute name the SDK does not have.
+        for tool_use_id, hits in policy.escalations.items():
+            if tool_use_id and tool_use_id in str(interrupt.id):
+                return hits
     return policy.last_hits

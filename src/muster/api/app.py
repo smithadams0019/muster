@@ -16,12 +16,15 @@ this task was written to prevent - see the module docstring in
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from muster.adapters.base import WorldAdapter
@@ -75,10 +78,13 @@ async def _default_draft_runner(state: MusterState, site_id: str) -> RunResult:
 
 async def _default_decision_resumer(state: MusterState, pending: PendingDecision) -> RunResult:
     policy = build_default_hold_policy(state.world, state.ledger, state.consent, state.autonomy)
+    decision = pending.decision
     agent = build_hold_agent(
         state.world, state.ledger, state.receipts, state.consent, policy, state.trail,
+        # This run continues because a person said yes. The receipt records them,
+        # not the agent.
+        decided_by=decision.by or "muster",
     )
-    decision = pending.decision
     decision_record = {
         "outcome": decision.outcome.value if decision.outcome else None,
         "by": decision.by,
@@ -143,19 +149,22 @@ def _open_decision(state: MusterState, offer_id: str, result: RunResult) -> str:
 
 
 def _shift_is_covered(state: MusterState, shift_id: str, result: RunResult) -> bool:
-    """Coverage is read from the ledger, never guessed from a run's exit status.
+    """Coverage is read from the ledger and from nothing else.
 
     A run can assign a cover and then pause on a later step (the notification),
     so the ledger is authoritative: `assign_cover` always writes an entry here
-    before anything else happens. The result's own text is consulted only when
-    the ledger carries no evidence at all for this shift.
+    before anything else happens.
+
+    There was briefly a fallback that searched the agent's closing message for
+    the word "cover" when the ledger held nothing. It reported success for a run
+    whose message was "I could not cover this shift", because that sentence
+    contains the word. An agent's account of what it did is exactly the thing
+    this system must not believe; if the ledger is empty, nobody was assigned.
     """
-    if any(
+    return any(
         entry.get("kind") == "assign_cover" and entry.get("shift_id") == shift_id
         for entry in state.ledger
-    ):
-        return True
-    return "cover" in (result.text or "").lower()
+    )
 
 
 def _serialize_pending(pending: PendingDecision) -> dict[str, Any]:
@@ -205,6 +214,32 @@ def _serialize_receipt(receipt: Any) -> dict[str, Any]:
 # -- the app --------------------------------------------------------------------
 
 
+
+def _record_seeded_postings(state: MusterState) -> None:
+    """Tell the ledger about the weeks the seeded world already has posted.
+
+    `PostingDependencyGuard` refuses to touch a shift whose schedule was never
+    posted, and it decides that by looking for a `post_schedule` entry in this
+    ledger. The demo world hands us a week that is already posted - it is how a
+    real operator's Monday starts, mid-week, with a rota already up - but nothing
+    ever wrote that fact down here, so every cover was refused as belonging to an
+    unposted schedule.
+
+    The world is the authority on what is posted; this simply records it.
+    """
+    for site in state.world.sites():
+        for week in state.world.posted_weeks(site.site_id):
+            schedule = state.world.schedule(site.site_id, week)
+            if schedule is None or not schedule.is_posted:
+                continue
+            state.ledger.append({
+                "kind": "post_schedule",
+                "site_id": site.site_id,
+                "shift_ids": [shift.shift_id for shift in schedule.shifts],
+                "at": schedule.posted_at.isoformat(),
+            })
+
+
 def create_app(
     hold_runner: HoldRunnerFn | None = None,
     draft_runner: DraftRunnerFn | None = None,
@@ -216,6 +251,7 @@ def create_app(
 
     app = FastAPI(title="Muster")
     app.state.muster = MusterState()
+    _record_seeded_postings(app.state.muster)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -412,5 +448,9 @@ def create_app(
         state: MusterState = app.state.muster
         state.autonomy = payload.level
         return get_autonomy()
+
+    console_dir = os.environ.get("MUSTER_CONSOLE_DIR")
+    if console_dir and Path(console_dir).is_dir():
+        app.mount("/", StaticFiles(directory=console_dir, html=True), name="console")
 
     return app

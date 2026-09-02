@@ -73,3 +73,35 @@ async def test_a_free_standby_cover_is_taken_without_a_human():
                             policy)
     assert result.paused is False
     assert any(e["kind"] == "assign_cover" for e in ledger)
+
+
+def test_the_result_reads_the_interrupts_real_fields():
+    """Pins the SDK's field names so a rename fails here, not at resume time.
+
+    `_result_from` once reached for `interrupt.interrupt_id` and
+    `interrupt.prompt` through `getattr(..., default)`. Neither exists on
+    `strands.interrupt.Interrupt`, so both silently produced None — and the
+    resume failed with `interrupt_id=<None> | no interrupt found` only after a
+    human had answered and the decision had already been consumed.
+    """
+    from types import SimpleNamespace
+
+    from strands.interrupt import Interrupt
+
+    from muster.loops.hold.runner import _result_from
+    from muster.policy.escalation import EscalationPolicy
+    from muster.policy.rules import RuleHit
+
+    interrupt = Interrupt(id="v1:before_tool_call:tooluse_ABC:xyz",
+                          name="muster-escalation", reason="$45.00 exceeds $0.00.")
+    policy = EscalationPolicy(AutonomyLevel.BALANCED, lambda name, args: None)
+    policy.escalations["tooluse_ABC"] = [RuleHit("cost_over_budget", "$45.00 exceeds $0.00.")]
+
+    agent = _agent()
+    result = _result_from(agent, SimpleNamespace(interrupts=[interrupt]), policy)
+
+    assert result.paused is True
+    assert result.interrupt_id == "v1:before_tool_call:tooluse_ABC:xyz"
+    assert result.text == "$45.00 exceeds $0.00."
+    assert result.interrupt_reason == "cost_over_budget"
+    assert result.snapshot is not None

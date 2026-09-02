@@ -287,6 +287,19 @@ class SableCoffee:
 
     # -- schedule writes ----------------------------------------------------
 
+    def posted_weeks(self, site_id: str) -> list[datetime]:
+        """Week-start datetimes this site already has a posted schedule for.
+
+        The API records these in its ledger at start-up, because the dependency
+        guard decides whether a shift may be touched by looking for a posting
+        entry there, and a week the world posted before the process began would
+        otherwise look unposted.
+        """
+        return [
+            week for (sid, week), schedule in self._schedules.items()
+            if sid == site_id and schedule.is_posted
+        ]
+
     def store_schedule(self, schedule: Schedule) -> None:
         self._schedules[(schedule.site_id, schedule.week_starts_at)] = schedule
         for shift in schedule.shifts:
