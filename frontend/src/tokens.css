@@ -1,37 +1,33 @@
 :root {
-  --ground: #ffffff;
-  --surface: #f7f9f9;
-  --surface-2: #eff3f4;
-  --line: #eff3f4;
-  --line-strong: #cfd9de;
+  --ground:#ffffff; --surface:#f7f8fa; --surface-2:#eef0f4; --rail:#fbfbfd;
+  --line:#e3e6ec; --line-strong:#c9cedb;
+  --ink:#161a25; --ink-2:#5a6273; --ink-3:#8c94a6;
+  --accent:#4429c4; --accent-ink:#ffffff; --accent-soft:#efeaff; --accent-line:#c9bcf5;
+  --posted:#0d7a4a; --posted-bg:#e8f6ee; --posted-line:#a8ddc0;
+  --held:#a15c00; --held-bg:#fdf3e2; --held-line:#e9c98a;
+  --consent:#b42318; --consent-bg:#fdeceb; --consent-line:#f0b4ae;
+  --open:#8c3fb5; --open-bg:#f8eefc; --open-line:#dfc0ef;
+  --off:#6b7280; --off-bg:#f2f3f5; --off-line:#d8dbe1;
+  --chart-required:#c2b8f0; --chart-scheduled:#4429c4;
+  --r-sm:6px; --r:10px; --r-pill:9999px;
+  --sans:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono:'JetBrains Mono', ui-monospace, monospace;
+  --fs-base:14px; --lh-base:20px;
+  --nav-h:56px; --toolbar-h:52px; --worker-col:230px; --legend-h:40px;
 
-  --ink: #0f1419;
-  --ink-2: #536471;
-  --ink-3: #8b98a5;
+  /* The header is the only large block of saturated colour in the product, the
+     way Deputy's is. Everything below it stays quiet so the rota reads clearly. */
+  --nav-bg:#2f1b7a;
+  --nav-bg-2:#4429c4;
+  --nav-ink:#ffffff;
+  --nav-ink-dim:#c9bcf5;
+  --nav-active:rgba(255,255,255,0.16);
 
-  --held: #b45309;
-  --held-tint: #fdf6ec;
-  --critical: #b42318;
-  --critical-tint: #fef4f3;
-  --cleared: #067647;
-  --cleared-tint: #f0f9f4;
+  /* One hue per role, so a week's shape is readable before any text is. */
+  --role-lead:#5b3df5;      --role-lead-bg:#f0ecff;   --role-lead-line:#c7bafa;
+  --role-baker:#b06a00;     --role-baker-bg:#fdf3e3;  --role-baker-line:#eccb92;
+  --role-barista:#0d7a4a;   --role-barista-bg:#e9f7ef; --role-barista-line:#a6dcc1;
 
-  --btn: #0f1419;
-  --btn-ink: #ffffff;
-
-  --r-card: 16px;
-  --r-pill: 9999px;
-
-  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
-
-  --fs-base: 15px;
-  --lh-base: 20px;
-
-  /* layout */
-  --col-left: 275px;
-  --col-center: 600px;
-  --col-right: 350px;
-  --shell-max: 1265px;
+  --shadow-card:0 1px 2px rgba(22,26,37,.06), 0 1px 1px rgba(22,26,37,.04);
+  --shadow-pop:0 8px 24px rgba(22,26,37,.12);
 }

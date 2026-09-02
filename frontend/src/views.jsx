@@ -1,22 +1,30 @@
-// The eight screens of the Muster console.
+// The seven screens of the Muster console: Schedule, Decisions, Consent,
+// People, Autonomy, Timeline, Receipts.
 //
-// App.jsx owns the global loading skeleton and the top-level error strip —
-// a screen only ever mounts once `loading` is false, so screens here render
-// content, not loading/error chrome.
+// App.jsx (owned by another agent in this same task) mounts exactly one of
+// these per route and owns the global loading skeleton and error strip — a
+// screen only ever renders once `loading` is false.
 //
-// Two rules hold across every screen in this file:
+// Two rules hold across every screen in this file, and in ScheduleGrid.jsx,
+// ShiftCard.jsx and DraftingModal.jsx alongside it:
 //   1. Nothing here prices anything or evaluates a policy rule. Every number
 //      rendered either came straight off an API response, or is a plain sum
 //      / comparison of numbers the API already computed (a week's receipt
 //      totals against a threshold, a shift's duration from two timestamps).
 //   2. "Now" always means world.now, read from the store. This file never
 //      calls `new Date()` with no argument.
+//
+// Styling is entirely local: a single <style> block (`ScreenStyle`, `vw-`
+// prefixed classes) built only from the design tokens in tokens.css, plus
+// inline styles for genuinely dynamic values. Nothing here depends on
+// styles.css or icons.jsx, both of which are being replaced concurrently
+// with this file — small glyphs (✓ ⚠ ▾ ⬇) stand in for icons.
 
 import { useMemo, useState } from 'react'
 import { useStore } from './store.js'
 import { receiptsCsvUrl } from './api.js'
 import OptionTable from './components/OptionTable.jsx'
-import { IconAlert, IconDownload } from './icons.jsx'
+import ScheduleGrid from './components/ScheduleGrid.jsx'
 
 // -- shared vocabulary --------------------------------------------------
 // Fixed identifiers the server already returns (policy/rules.py, domain/
@@ -71,23 +79,6 @@ function fmtDateTime(iso) {
   return `${fmtDate(iso)}, ${fmtTime(iso)}`
 }
 
-function hoursBetween(startIso, endIso) {
-  const ms = new Date(endIso) - new Date(startIso)
-  return Math.round((ms / 3_600_000) * 10) / 10
-}
-
-function weekWindow(nowIso) {
-  if (!nowIso) return null
-  const now = new Date(nowIso)
-  const diffToMonday = (now.getUTCDay() + 6) % 7
-  const monday = new Date(now)
-  monday.setUTCDate(now.getUTCDate() - diffToMonday)
-  monday.setUTCHours(0, 0, 0, 0)
-  const nextMonday = new Date(monday)
-  nextMonday.setUTCDate(monday.getUTCDate() + 7)
-  return [monday, nextMonday]
-}
-
 function centsFromDollarsStr(str) {
   const n = Number(str)
   return Number.isFinite(n) ? Math.round(n * 100) : 0
@@ -118,135 +109,107 @@ function findShift(schedules, shiftId) {
   return null
 }
 
-function useWeekTotals() {
-  const world = useStore((s) => s.world)
-  const receipts = useStore((s) => s.receipts) || []
-  return useMemo(() => {
-    const window = weekWindow(world?.now)
-    if (!window) return { count: 0, cents: 0 }
-    const [start, end] = window
-    const inWeek = receipts.filter((r) => {
-      const at = new Date(r.at)
-      return at >= start && at < end
-    })
-    return {
-      count: inWeek.length,
-      cents: inWeek.reduce((sum, r) => sum + centsFromDollarsStr(r.total), 0),
-    }
-  }, [receipts, world?.now])
+// -- shared local styling --------------------------------------------------
+// Every class below is defined here, in this file, and nowhere else. None of
+// it depends on the shared stylesheet the other agent is replacing.
+
+function ScreenStyle() {
+  return (
+    <style>{`
+      .vw-pad { padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; font-family: var(--sans); }
+      .vw-lede { font-size: 14px; color: var(--ink-2); margin: 0; }
+      .vw-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; }
+      .vw-card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+        color: var(--ink-3); margin-bottom: 8px; }
+      .vw-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+        padding: 10px 0; border-bottom: 1px solid var(--line); }
+      .vw-row:last-child { border-bottom: none; }
+      .vw-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+      .vw-row-title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+      .vw-row-sub { font-size: 12.5px; color: var(--ink-2); }
+      .vw-row-actions { display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: wrap; }
+      .vw-mono { font-family: var(--mono); }
+      .vw-empty { padding: 20px 0; color: var(--ink-3); font-size: 13px; }
+
+      .vw-btn { font-family: var(--sans); font-size: 12.5px; font-weight: 600; padding: 7px 14px;
+        border-radius: var(--r-pill); border: 1px solid var(--line-strong); background: var(--surface);
+        color: var(--ink); cursor: pointer; }
+      .vw-btn:disabled { opacity: 0.55; cursor: default; }
+      .vw-btn-primary { border-color: var(--accent-line); background: var(--accent); color: var(--accent-ink); }
+      .vw-btn-danger { border-color: var(--consent-line); background: var(--consent-bg); color: var(--consent); }
+      .vw-btn-sm { padding: 5px 11px; font-size: 12px; }
+
+      .vw-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: var(--r-pill);
+        font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+      .vw-badge-held { background: var(--held-bg); color: var(--held); border: 1px solid var(--held-line); }
+      .vw-badge-consent { background: var(--consent-bg); color: var(--consent); border: 1px solid var(--consent-line); }
+      .vw-badge-posted { background: var(--posted-bg); color: var(--posted); border: 1px solid var(--posted-line); }
+      .vw-badge-open { background: var(--open-bg); color: var(--open); border: 1px solid var(--open-line); }
+      .vw-badge-neutral { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+
+      .vw-table-wrap { overflow-x: auto; }
+      .vw-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .vw-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em;
+        color: var(--ink-3); padding: 8px 10px; border-bottom: 1px solid var(--line-strong); }
+      .vw-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); color: var(--ink); }
+
+      .vw-field { display: flex; flex-direction: column; gap: 5px; padding: 8px 0; }
+      .vw-field label { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+      .vw-field textarea { font-family: var(--sans); font-size: 13px; color: var(--ink); background: var(--ground);
+        border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 8px 10px; resize: vertical; }
+
+      .vw-alert { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: var(--r-sm);
+        background: var(--consent-bg); border: 1px solid var(--consent-line); color: var(--consent); font-size: 13px; }
+
+      .vw-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+      .vw-tab { font-family: var(--sans); font-size: 12.5px; font-weight: 600; padding: 6px 13px;
+        border-radius: var(--r-pill); border: 1px solid var(--line-strong); background: var(--surface);
+        color: var(--ink-2); cursor: pointer; }
+      .vw-tab-active { background: var(--accent); border-color: var(--accent-line); color: var(--accent-ink); }
+
+      .vw-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+      .vw-chip { font-family: var(--mono); font-size: 11px; background: var(--surface-2); color: var(--ink-2);
+        border: 1px solid var(--line); border-radius: var(--r-sm); padding: 2px 8px; }
+
+      .vw-avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--accent-soft);
+        color: var(--accent-ink); display: flex; align-items: center; justify-content: center;
+        font-size: 11.5px; font-weight: 700; flex: none; }
+    `}</style>
+  )
 }
 
 function Empty({ children }) {
-  return <div className="empty-state">{children}</div>
+  return <div className="vw-empty">{children}</div>
 }
 
-// -- Today ------------------------------------------------------------------
+function initials(name) {
+  const stripped = (name || '').replace(/\s*\([^)]*\)\s*$/, '').trim()
+  const parts = stripped.split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '—'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+}
 
-export function Today() {
+// -- Schedule ---------------------------------------------------------------
+// The product's face: a Deputy-style week grid, one site at a time.
+
+export function Schedule({ siteId }) {
   const world = useStore((s) => s.world)
-  const decisions = useStore((s) => s.decisions) || []
-  const consent = useStore((s) => s.consent) || []
-  const schedules = useStore((s) => s.schedules) || {}
-  const autonomy = useStore((s) => s.autonomy)
-  const go = useStore((s) => s.go)
-
-  const weekTotals = useWeekTotals()
-  const budgetCents = autonomy?.thresholds?.weekly_budget_cents ?? null
-  const overBudget = budgetCents != null && weekTotals.cents > budgetCents
-
-  const sortedDecisions = useMemo(
-    () => [...decisions].sort(byNonNegotiableFirst),
-    [decisions],
-  )
-
-  const waiting = decisions.length + consent.length
-  const summary =
-    waiting === 0 && weekTotals.count === 0
-      ? 'Nothing has moved this week. Muster is watching the posted rota.'
-      : waiting === 0
-        ? `Muster covered ${weekTotals.count} ${weekTotals.count === 1 ? 'shift' : 'shifts'} this week without interrupting you.`
-        : `${waiting} ${waiting === 1 ? 'call needs' : 'calls need'} you. Muster handled ${weekTotals.count} ${weekTotals.count === 1 ? 'other' : 'others'} on its own.`
-
-  const sitesPosted = (world?.sites || []).filter((s) => schedules[s.site_id]?.posted_at).length
-  const soonestConsentExpiry = [...consent].map((c) => c.expires_at).sort()[0]
+  // The site comes from the toolbar picker, which is the only site selector in
+  // the product. This screen used to carry its own tab row as well, so the page
+  // had two controls for one choice and they could disagree.
+  const sites = world?.sites || []
+  const activeSiteId = sites.some((s) => s.site_id === siteId) ? siteId : sites[0]?.site_id
 
   return (
-    <>
-      {/* The right rail already carries the same three figures as a standing
-          card. Repeating them here wasted the top of the feed, so the centre
-          column opens with the sentence a coordinator would actually say. */}
-      <div className="section-pad">
-        <p className="lede">{summary}</p>
-      </div>
-
-      <div className="section-pad">
-        <div className="card-title">The three loops</div>
-        <div className="row">
-          <div className="row-main">
-            <span className="row-title">Draft — next week's schedule</span>
-            <span className="row-sub">{sitesPosted} of {world?.sites?.length || 0} sites posted</span>
-          </div>
-          <div className="row-actions">
-            <button type="button" className="btn btn-sm" onClick={() => go?.('schedule')}>
-              Open Schedule
-            </button>
-          </div>
-        </div>
-        <div className="row">
-          <div className="row-main">
-            <span className="row-title">Hold — covering the posted week</span>
-            <span className="row-sub">
-              {decisions.length} held decision{decisions.length === 1 ? '' : 's'}
-            </span>
-          </div>
-          <div className="row-actions">
-            <button type="button" className="btn btn-sm" onClick={() => go?.('decisions')}>
-              Open Decisions
-            </button>
-          </div>
-        </div>
-        <div className="row">
-          <div className="row-main">
-            <span className="row-title">Consent — asks out to workers</span>
-            <span className="row-sub">
-              {consent.length} outstanding
-              {soonestConsentExpiry ? `, soonest expires ${fmtDateTime(soonestConsentExpiry)}` : ''}
-            </span>
-          </div>
-          <div className="row-actions">
-            <button type="button" className="btn btn-sm" onClick={() => go?.('consent')}>
-              Open Consent
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="section-pad">
-        <div className="card-title">Waiting on you</div>
-        {sortedDecisions.length === 0 ? (
-          <Empty>Nothing held right now.</Empty>
-        ) : (
-          sortedDecisions.map((d) => (
-            <div className="row" key={d.decision_id}>
-              <div className="row-main">
-                <span className="row-title">{RULE_LABELS[d.rule] || d.rule}</span>
-                <span className="row-sub">{d.prompt}</span>
-              </div>
-              <div className="row-actions">
-                {hasNonNegotiable(d) && (
-                  <span className="badge badge-critical">
-                    <IconAlert width={14} height={14} /> needs consent
-                  </span>
-                )}
-                <button type="button" className="btn btn-sm" onClick={() => go?.('decisions')}>
-                  Review
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </>
+    <div className="vw-pad">
+      <ScreenStyle />
+      {sites.length === 0 ? (
+        <Empty>No sites yet.</Empty>
+      ) : (
+        activeSiteId && <ScheduleGrid siteId={activeSiteId} />
+      )}
+    </div>
   )
 }
 
@@ -292,14 +255,14 @@ function DecisionCard({ decision }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
-      <div className="card-row">
-        <span className="badge badge-held">held</span>
-        <span className="row-sub mono">{decision.offer_id}</span>
+    <div className="vw-card">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <span className="vw-badge vw-badge-held">held</span>
+        <span className="vw-row-sub vw-mono">{decision.offer_id}</span>
       </div>
-      <div className="card-title">{RULE_LABELS[decision.rule] || decision.rule}</div>
+      <div className="vw-row-title" style={{ fontSize: 14.5 }}>{RULE_LABELS[decision.rule] || decision.rule}</div>
       {located && (
-        <div className="row-sub">
+        <div className="vw-row-sub">
           {siteName(world, located.site_id)} · {ROLE_LABELS[located.shift.role] || located.shift.role} ·{' '}
           {fmtDateTime(located.shift.starts_at)}–{fmtTime(located.shift.ends_at)}
         </div>
@@ -307,29 +270,28 @@ function DecisionCard({ decision }) {
 
       <OptionTable options={options} />
 
-      <div style={{ padding: '12px 0' }}>
-        <div className="row-title">Rules that fired</div>
+      <div style={{ padding: '10px 0' }}>
+        <div className="vw-card-title">Rules that fired</div>
         {(decision.rule_hits || []).map((h, i) => (
-          <div className="row" key={`${h.rule}-${i}`}>
-            <div className="row-main">
-              <span className="row-title">{RULE_LABELS[h.rule] || h.rule}</span>
-              <span className="row-sub">{h.detail}</span>
+          <div className="vw-row" key={`${h.rule}-${i}`}>
+            <div className="vw-row-main">
+              <span className="vw-row-title">{RULE_LABELS[h.rule] || h.rule}</span>
+              <span className="vw-row-sub">{h.detail}</span>
             </div>
-            {NON_NEGOTIABLE.has(h.rule) && <span className="badge badge-critical">fixed at every level</span>}
+            {NON_NEGOTIABLE.has(h.rule) && <span className="vw-badge vw-badge-consent">fixed at every level</span>}
           </div>
         ))}
       </div>
 
       {nonNegotiable && (
-        <div className="error-strip">
-          <IconAlert width={14} height={14} /> This needs the worker's own yes — a manager cannot approve
-          it away. Check <button type="button" className="btn btn-sm" onClick={() => go?.('consent')}>
-            Consent
-          </button>, or decline to have Muster try another route.
+        <div className="vw-alert">
+          ⚠ This needs the worker's own yes — a manager cannot approve it away. Check{' '}
+          <button type="button" className="vw-btn vw-btn-sm" onClick={() => go?.('consent')}>Consent</button>,
+          or decline to have Muster try another route.
         </div>
       )}
 
-      <div className="field">
+      <div className="vw-field">
         <label htmlFor={`note-${decision.decision_id}`}>Note (recorded against the operator)</label>
         <textarea
           id={`note-${decision.decision_id}`}
@@ -340,17 +302,17 @@ function DecisionCard({ decision }) {
         />
       </div>
 
-      <div className="row-actions">
+      <div className="vw-row-actions">
         <button
           type="button"
-          className="btn btn-primary"
+          className="vw-btn vw-btn-primary"
           disabled={nonNegotiable || busyNow}
           title={nonNegotiable ? "Needs the worker's own consent" : undefined}
           onClick={() => answer('approve')}
         >
           Approve
         </button>
-        <button type="button" className="btn btn-danger" disabled={busyNow} onClick={() => answer('decline')}>
+        <button type="button" className="vw-btn vw-btn-danger" disabled={busyNow} onClick={() => answer('decline')}>
           Decline
         </button>
       </div>
@@ -363,7 +325,8 @@ export function Decisions() {
   const sorted = useMemo(() => [...decisions].sort(byNonNegotiableFirst), [decisions])
 
   return (
-    <div className="section-pad">
+    <div className="vw-pad">
+      <ScreenStyle />
       {sorted.length === 0 ? (
         <Empty>No held decisions. Muster is covering everything inside its limits.</Empty>
       ) : (
@@ -381,162 +344,66 @@ export function Consent() {
   const busy = useStore((s) => s.busy) || {}
   const answerConsent = useStore((s) => s.answerConsent)
 
-  if (consent.length === 0) return <div className="section-pad"><Empty>No outstanding consent asks.</Empty></div>
-
   return (
-    <div className="section-pad">
-      {consent.map((c) => {
-        const now = world?.now ? new Date(world.now) : null
-        const expired = now ? new Date(c.expires_at) <= now : false
-        const isFinal = Boolean(c.outcome) || expired
-        const busyNow = Boolean(busy[`consent:${c.request_id}`])
-
-        return (
-          <div className="row" key={c.request_id}>
-            <div className="row-main">
-              <span className="row-title">
-                {workerName(world, c.worker_id)} — {c.kind.replace('_', ' ')}
-              </span>
-              <span className="row-sub">{c.what_it_means}</span>
-              <span className="row-sub">
-                Owed {formatDollarsStr(c.premium_owed)} · asked {fmtDateTime(c.asked_at)} · expires{' '}
-                {fmtDateTime(c.expires_at)}
-              </span>
-            </div>
-            <div className="row-actions">
-              {isFinal ? (
-                <span className={`badge ${c.outcome === 'granted' ? 'badge-cleared' : 'badge-critical'}`}>
-                  {c.outcome || 'expired'} — final
-                </span>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    disabled={busyNow}
-                    onClick={() => answerConsent?.(c.request_id, 'granted')?.catch(() => {})}
-                  >
-                    They said yes
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-danger"
-                    disabled={busyNow}
-                    onClick={() => answerConsent?.(c.request_id, 'declined')?.catch(() => {})}
-                  >
-                    They said no
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// -- Schedule ---------------------------------------------------------------
-
-function SiteSchedule({ site }) {
-  const world = useStore((s) => s.world)
-  const schedules = useStore((s) => s.schedules) || {}
-  const busy = useStore((s) => s.busy) || {}
-  const draftWeek = useStore((s) => s.draftWeek)
-  const schedule = schedules[site.site_id]
-  const busyNow = Boolean(busy[`draft:${site.site_id}`])
-
-  const days = useMemo(() => {
-    if (!schedule?.week_starts_at) return []
-    const start = new Date(schedule.week_starts_at)
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(start)
-      d.setUTCDate(start.getUTCDate() + i)
-      return d
-    })
-  }, [schedule?.week_starts_at])
-
-  const byDay = useMemo(() => {
-    const map = new Map()
-    for (const day of days) map.set(day.toISOString().slice(0, 10), [])
-    for (const sh of schedule?.shifts || []) {
-      const key = new Date(sh.starts_at).toISOString().slice(0, 10)
-      if (!map.has(key)) map.set(key, [])
-      map.get(key).push(sh)
-    }
-    return map
-  }, [days, schedule?.shifts])
-
-  return (
-    <div className="section-pad">
-      <div className="card-row">
-        <div className="card-title">{site.name}</div>
-        <button
-          type="button"
-          className="btn btn-sm"
-          disabled={busyNow}
-          onClick={() => draftWeek?.(site.site_id)?.catch(() => {})}
-        >
-          {busyNow ? 'Drafting…' : 'Draft next week'}
-        </button>
-      </div>
-      <div className="row-sub">
-        {site.jurisdiction_code}
-        {schedule?.posted_at ? ` · posted ${fmtDateTime(schedule.posted_at)}` : ' · not posted'}
-      </div>
-
-      {!schedule ? (
-        <Empty>No schedule loaded for this site yet.</Empty>
+    <div className="vw-pad">
+      <ScreenStyle />
+      {consent.length === 0 ? (
+        <Empty>No outstanding consent asks.</Empty>
       ) : (
-        days.map((day) => {
-          const key = day.toISOString().slice(0, 10)
-          const shifts = byDay.get(key) || []
-          return (
-            <div key={key} className="row">
-              <div className="row-main" style={{ minWidth: 90 }}>
-                <span className="row-title">
-                  {day.toLocaleDateString(undefined, {
-                    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
-                  })}
-                </span>
+        <div className="vw-card">
+          {consent.map((c) => {
+            const now = world?.now ? new Date(world.now) : null
+            const expired = now ? new Date(c.expires_at) <= now : false
+            const busyNow = Boolean(busy[`consent:${c.request_id}`])
+
+            return (
+              <div className="vw-row" key={c.request_id}>
+                <div className="vw-row-main">
+                  <span className="vw-row-title">
+                    {workerName(world, c.worker_id)} — {c.kind.replace('_', ' ')}
+                  </span>
+                  <span className="vw-row-sub">{c.what_it_means}</span>
+                  <span className="vw-row-sub">
+                    Owed {formatDollarsStr(c.premium_owed)} · asked {fmtDateTime(c.asked_at)} · expires{' '}
+                    {fmtDateTime(c.expires_at)}
+                  </span>
+                </div>
+                <div className="vw-row-actions">
+                  {expired ? (
+                    <span className="vw-badge vw-badge-consent">expired — final</span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="vw-btn vw-btn-sm"
+                        disabled={busyNow}
+                        onClick={() => answerConsent?.(c.request_id, 'granted')?.catch(() => {})}
+                      >
+                        They said yes
+                      </button>
+                      <button
+                        type="button"
+                        className="vw-btn vw-btn-sm vw-btn-danger"
+                        disabled={busyNow}
+                        onClick={() => answerConsent?.(c.request_id, 'declined')?.catch(() => {})}
+                      >
+                        They said no
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-              <div className="row-main">
-                {shifts.length === 0 ? (
-                  <span className="row-sub">No shifts posted</span>
-                ) : (
-                  shifts.map((sh) => (
-                    <span className="row-sub" key={sh.shift_id}>
-                      {sh.worker_id ? workerName(world, sh.worker_id) : 'Unassigned'} —{' '}
-                      {ROLE_LABELS[sh.role] || sh.role} — {fmtTime(sh.starts_at)}–{fmtTime(sh.ends_at)} (
-                      {hoursBetween(sh.starts_at, sh.ends_at)}h)
-                    </span>
-                  ))
-                )}
-              </div>
-            </div>
-          )
-        })
+            )
+          })}
+        </div>
       )}
     </div>
   )
 }
 
-export function Schedule() {
-  const world = useStore((s) => s.world)
-  const sites = world?.sites || []
+// -- People ---------------------------------------------------------------
 
-  if (sites.length === 0) return <div className="section-pad"><Empty>No sites yet.</Empty></div>
-
-  return (
-    <>
-      {sites.map((site) => <SiteSchedule site={site} key={site.site_id} />)}
-    </>
-  )
-}
-
-// -- Team ---------------------------------------------------------------
-
-export function Team() {
+export function People() {
   const world = useStore((s) => s.world)
   const workers = world?.workers || []
   const bySite = useMemo(() => {
@@ -549,42 +416,62 @@ export function Team() {
   }, [workers])
 
   return (
-    <>
-      <div className="section-pad">
-        <div className="card">
-          The standby-list carve-out is Oregon-only — it exists nowhere else in the rulebook.
-        </div>
+    <div className="vw-pad">
+      <ScreenStyle />
+      <div className="vw-card">
+        The standby-list carve-out is Oregon-only — it exists nowhere else in the rulebook.
       </div>
+
       {workers.length === 0 ? (
-        <div className="section-pad"><Empty>No roster yet.</Empty></div>
+        <Empty>No roster yet.</Empty>
       ) : (
         [...bySite.entries()].map(([siteId, roster]) => (
-          <div className="section-pad" key={siteId}>
-            <div className="card-title">{siteName(world, siteId)}</div>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th>Rate</th>
-                  <th>Good-faith hours</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roster.map((w) => (
-                  <tr key={w.worker_id}>
-                    <td>{w.name}</td>
-                    <td>{ROLE_LABELS[w.role] || w.role}</td>
-                    <td className="mono">{formatDollarsStr(w.hourly_rate)}/hr</td>
-                    <td>{w.good_faith_hours}h</td>
+          <div className="vw-card" key={siteId}>
+            <div className="vw-card-title">{siteName(world, siteId)}</div>
+            <div className="vw-table-wrap">
+              <table className="vw-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Rate</th>
+                    <th>Good-faith hours</th>
+                    <th>Certifications</th>
+                    <th>Standby list</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {roster.map((w) => (
+                    <tr key={w.worker_id}>
+                      <td><span className="vw-avatar">{initials(w.name)}</span></td>
+                      <td>{w.name}</td>
+                      <td>{ROLE_LABELS[w.role] || w.role}</td>
+                      <td className="vw-mono">{formatDollarsStr(w.hourly_rate)}/hr</td>
+                      <td>{w.good_faith_hours}h</td>
+                      <td>
+                        {Array.isArray(w.certifications) && w.certifications.length > 0
+                          ? <span className="vw-chips">{w.certifications.map((c) => (
+                              <span className="vw-chip" key={c}>{c}</span>
+                            ))}</span>
+                          : '—'}
+                      </td>
+                      <td>
+                        {typeof w.on_standby_list === 'boolean'
+                          ? (w.on_standby_list
+                              ? <span className="vw-badge vw-badge-posted">on standby list</span>
+                              : '—')
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         ))
       )}
-    </>
+    </div>
   )
 }
 
@@ -611,15 +498,16 @@ export function Autonomy() {
   const t = autonomy?.thresholds
 
   return (
-    <>
-      <div className="section-pad">
-        <div className="card-title">The dial</div>
-        <div className="row-actions" style={{ padding: '8px 0' }}>
+    <div className="vw-pad">
+      <ScreenStyle />
+      <div className="vw-card">
+        <div className="vw-card-title">The dial</div>
+        <div className="vw-row-actions" style={{ padding: '4px 0 12px' }}>
           {DIAL_LEVELS.map((level) => (
             <button
               key={level}
               type="button"
-              className={`btn ${autonomy?.level === level ? 'btn-primary' : ''}`}
+              className={`vw-btn${autonomy?.level === level ? ' vw-btn-primary' : ''}`}
               disabled={busyNow}
               onClick={() => setAutonomy?.(level)?.catch(() => {})}
             >
@@ -629,35 +517,34 @@ export function Autonomy() {
         </div>
 
         {t && typeof t.max_unattended_cents === 'number' && (
-          <div className="card">
-            <div className="card-title">{autonomy.level}'s thresholds</div>
-            <div className="card-row">
-              <span>Spends per incident, unattended, up to</span>
-              <span className="mono">{formatCents(t.max_unattended_cents)}</span>
+          <div>
+            <div className="vw-row">
+              <span className="vw-row-sub">Spends per incident, unattended, up to</span>
+              <span className="vw-mono">{formatCents(t.max_unattended_cents)}</span>
             </div>
-            <div className="card-row">
-              <span>Spends per week, unattended, up to</span>
-              <span className="mono">{formatCents(t.weekly_budget_cents)}</span>
+            <div className="vw-row">
+              <span className="vw-row-sub">Spends per week, unattended, up to</span>
+              <span className="vw-mono">{formatCents(t.weekly_budget_cents)}</span>
             </div>
-            <div className="card-row">
-              <span>Overtime tolerated per worker per week</span>
-              <span className="mono">{t.max_overtime_hours.toFixed(1)}h</span>
+            <div className="vw-row">
+              <span className="vw-row-sub">Overtime tolerated per worker per week</span>
+              <span className="vw-mono">{t.max_overtime_hours.toFixed(1)}h</span>
             </div>
-            <div className="card-row">
-              <span>May take a worker below good-faith hours by</span>
-              <span className="mono">{Math.round(t.max_shortfall_fraction * 100)}%</span>
+            <div className="vw-row">
+              <span className="vw-row-sub">May take a worker below good-faith hours by</span>
+              <span className="vw-mono">{Math.round(t.max_shortfall_fraction * 100)}%</span>
             </div>
           </div>
         )}
       </div>
 
-      <div className="section-pad">
-        <div className="card-title">Fixed at every level — the dial cannot move these</div>
+      <div className="vw-card">
+        <div className="vw-card-title">Fixed at every level — the dial cannot move these</div>
         {RULE_CATALOG.filter((r) => r.nonNegotiable).map((r) => (
-          <div className="row" key={r.rule}>
-            <div className="row-main">
-              <span className="row-title">{r.label}</span>
-              <span className="row-sub">
+          <div className="vw-row" key={r.rule}>
+            <div className="vw-row-main">
+              <span className="vw-row-title">{r.label}</span>
+              <span className="vw-row-sub">
                 {r.rule === 'rest_waiver_required'
                   ? "Oregon requires the worker's own request or consent before a rest period is "
                     + "shortened; NYC requires written consent for a clopening; Chicago's guidance says "
@@ -665,66 +552,67 @@ export function Autonomy() {
                   : 'Muster does not ask a worker twice once they have said no.'}
               </span>
             </div>
-            <span className="badge badge-critical">fixed at every level</span>
+            <span className="vw-badge vw-badge-consent">fixed at every level</span>
           </div>
         ))}
       </div>
 
-      <div className="section-pad">
-        <div className="card-title">Every rule that can stop the agent</div>
+      <div className="vw-card">
+        <div className="vw-card-title">Every rule that can stop the agent</div>
         {RULE_CATALOG.filter((r) => !r.nonNegotiable).map((r) => (
-          <div className="row" key={r.rule}>
-            <div className="row-main">
-              <span className="row-title">{r.label}</span>
-            </div>
-            <span className="badge badge-neutral">moves with the dial</span>
+          <div className="vw-row" key={r.rule}>
+            <span className="vw-row-title">{r.label}</span>
+            <span className="vw-badge vw-badge-neutral">moves with the dial</span>
           </div>
         ))}
       </div>
-    </>
+    </div>
   )
 }
 
 // -- Timeline -----------------------------------------------------------
 
 const KIND_BADGE = {
-  model_call: 'badge-neutral',
-  tool_call: 'badge-cleared',
-  tool_result: 'badge-neutral',
-  refusal: 'badge-critical',
+  model_call: 'vw-badge-neutral',
+  tool_call: 'vw-badge-posted',
+  tool_result: 'vw-badge-neutral',
+  refusal: 'vw-badge-consent',
 }
 
 export function Timeline() {
   const timeline = useStore((s) => s.timeline) || []
 
-  if (timeline.length === 0) return <div className="section-pad"><Empty>No activity recorded yet.</Empty></div>
-
   return (
-    <div className="section-pad">
-      {timeline.map((entry, i) => {
-        const guarded = entry.kind === 'tool_call' && GUARDED_TOOLS.has(entry.label)
-        return (
-          <div className="row" key={`${entry.at}-${i}`}>
-            <div className="row-main">
-              <span className="row-title">
-                <span className={`badge ${KIND_BADGE[entry.kind] || 'badge-neutral'}`}>{entry.kind}</span>{' '}
-                {entry.label}
-                {guarded && <span className="badge badge-held" style={{ marginLeft: 6 }}>guarded</span>}
-              </span>
-              {entry.detail && Object.keys(entry.detail).length > 0 && (
-                <span className="row-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {Object.entries(entry.detail).map(([k, v]) => (
-                    <span className="badge badge-neutral" key={k}>
-                      {k}: {String(v)}
+    <div className="vw-pad">
+      <ScreenStyle />
+      {timeline.length === 0 ? (
+        <Empty>No activity recorded yet.</Empty>
+      ) : (
+        <div className="vw-card">
+          {timeline.map((entry, i) => {
+            const guarded = entry.kind === 'tool_call' && GUARDED_TOOLS.has(entry.label)
+            return (
+              <div className="vw-row" key={`${entry.at}-${i}`}>
+                <div className="vw-row-main">
+                  <span className="vw-row-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className={`vw-badge ${KIND_BADGE[entry.kind] || 'vw-badge-neutral'}`}>{entry.kind}</span>
+                    {entry.label}
+                    {guarded && <span className="vw-badge vw-badge-held">guarded</span>}
+                  </span>
+                  {entry.detail && Object.keys(entry.detail).length > 0 && (
+                    <span className="vw-chips">
+                      {Object.entries(entry.detail).map(([k, v]) => (
+                        <span className="vw-chip" key={k}>{k}: {String(v)}</span>
+                      ))}
                     </span>
-                  ))}
-                </span>
-              )}
-            </div>
-            <span className="row-sub mono">{fmtDateTime(entry.at)}</span>
-          </div>
-        )
-      })}
+                  )}
+                </div>
+                <span className="vw-row-sub vw-mono">{fmtDateTime(entry.at)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -736,45 +624,43 @@ export function Receipts() {
   const receipts = useStore((s) => s.receipts) || []
 
   return (
-    <>
-      <div className="section-pad">
-        <a className="btn btn-primary" href={receiptsCsvUrl()}>
-          <IconDownload width={16} height={16} /> Download receipts.csv
-        </a>
-      </div>
-      <div className="section-pad">
-        {receipts.length === 0 ? (
-          <Empty>No receipts yet.</Empty>
-        ) : (
-          receipts.map((r, i) => (
-            <div className="row" key={`${r.shift_id}-${r.at}-${i}`}>
-              <div className="row-main">
-                <span className="row-title">
+    <div className="vw-pad">
+      <ScreenStyle />
+      <a className="vw-btn vw-btn-primary" href={receiptsCsvUrl()} style={{ alignSelf: 'flex-start' }}>
+        ⬇ Download receipts.csv
+      </a>
+
+      {receipts.length === 0 ? (
+        <Empty>No receipts yet.</Empty>
+      ) : (
+        <div className="vw-card">
+          {receipts.map((r, i) => (
+            <div className="vw-row" key={`${r.shift_id}-${r.at}-${i}`}>
+              <div className="vw-row-main">
+                <span className="vw-row-title">
                   {workerName(world, r.worker_id)} — {siteName(world, r.site_id)}
                 </span>
-                <span className="row-sub">
+                <span className="vw-row-sub">
                   {r.kind.replace('_', ' ')} · {r.jurisdiction_code} · {fmtDateTime(r.at)}
                 </span>
-                <span className="row-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <span className="vw-chips">
                   {r.lines.map((line, li) => (
-                    <span className="badge badge-neutral" key={li}>
-                      {line.clause}: {formatDollarsStr(line.amount)}
-                    </span>
+                    <span className="vw-chip" key={li}>{line.clause}: {formatDollarsStr(line.amount)}</span>
                   ))}
                 </span>
                 {r.carve_outs_applied.length > 0 && (
-                  <span className="row-sub">Carve-outs: {r.carve_outs_applied.join(', ')}</span>
+                  <span className="vw-row-sub">Carve-outs: {r.carve_outs_applied.join(', ')}</span>
                 )}
-                <span className="row-sub">
+                <span className="vw-row-sub">
                   Decided by {r.decided_by}
                   {r.consent ? ` · consent ${r.consent.outcome}` : ''}
                 </span>
               </div>
-              <span className="badge badge-cleared mono">{formatDollarsStr(r.total)}</span>
+              <span className="vw-badge vw-badge-posted vw-mono">{formatDollarsStr(r.total)}</span>
             </div>
-          ))
-        )}
-      </div>
-    </>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

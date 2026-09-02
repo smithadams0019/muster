@@ -1,5 +1,6 @@
-// Inline SVG stroke icons. 22px, currentColor, 2px stroke — matches the nav's
-// icon+label pills. Kept as plain functions so any screen or component can
+// Inline SVG stroke icons. 22px default, currentColor, 2px stroke — sized
+// down with width/height props wherever the toolbar or a badge needs a
+// smaller glyph. Kept as plain functions so any screen or component can
 // import exactly the glyphs it needs without pulling in an icon-font build.
 
 const base = {
@@ -20,6 +21,8 @@ function Svg({ children, ...props }) {
     </svg>
   )
 }
+
+// -- nav / identity glyphs (kept for anything still importing them) --------
 
 export function IconToday(props) {
   return (
@@ -102,6 +105,8 @@ export function IconReceipts(props) {
   )
 }
 
+// -- status / action glyphs -------------------------------------------------
+
 export function IconAlert(props) {
   return (
     <Svg {...props}>
@@ -155,12 +160,83 @@ export function IconChevronDown(props) {
   )
 }
 
+export function IconChevronLeft(props) {
+  return (
+    <Svg {...props}>
+      <path d="m15 6-6 6 6 6" />
+    </Svg>
+  )
+}
+
+export function IconChevronRight(props) {
+  return (
+    <Svg {...props}>
+      <path d="m9 6 6 6-6 6" />
+    </Svg>
+  )
+}
+
 export function IconDownload(props) {
   return (
     <Svg {...props}>
       <path d="M12 4v11" />
       <path d="m7 10.5 5 5 5-5" />
       <path d="M4.5 19h15" />
+    </Svg>
+  )
+}
+
+// -- toolbar glyphs ----------------------------------------------------------
+
+export function IconPin(props) {
+  return (
+    <Svg {...props}>
+      <path d="M12 21.5s-7-6.2-7-11.6a7 7 0 0 1 14 0c0 5.4-7 11.6-7 11.6Z" />
+      <circle cx="12" cy="9.8" r="2.4" />
+    </Svg>
+  )
+}
+
+export function IconRefresh(props) {
+  return (
+    <Svg {...props}>
+      <path d="M20 11a8 8 0 0 0-14.9-3.5M4 5v4.5h4.5" />
+      <path d="M4 13a8 8 0 0 0 14.9 3.5M20 19v-4.5h-4.5" />
+    </Svg>
+  )
+}
+
+export function IconSparkle(props) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3.5 13.6 9l5.4 1.6-5.4 1.6L12 17.7l-1.6-5.5L5 10.6 10.4 9Z" />
+      <path d="M19 4v3M17.5 5.5h3" />
+    </Svg>
+  )
+}
+
+export function IconGear(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 4v2.3M12 17.7V20M4 12h2.3M17.7 12H20M6.3 6.3l1.6 1.6M16.1 16.1l1.6 1.6M17.7 6.3l-1.6 1.6M7.9 16.1l-1.6 1.6" />
+    </Svg>
+  )
+}
+
+export function IconBell(props) {
+  return (
+    <Svg {...props}>
+      <path d="M6 10.5a6 6 0 0 1 12 0c0 4 1.3 5.5 2 6.3H4c.7-.8 2-2.3 2-6.3Z" />
+      <path d="M10 19.5a2 2 0 0 0 4 0" />
+    </Svg>
+  )
+}
+
+export function IconInsights(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4 20V10M10.5 20V4M17 20v-7" />
     </Svg>
   )
 }

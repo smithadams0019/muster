@@ -6,7 +6,7 @@
 import { create } from 'zustand'
 import * as api from './api.js'
 
-const OPERATOR = { by: 'Roger Koranteng', role: 'operator' }
+const OPERATOR = { by: 'Alex Smith', role: 'operator' }
 const TOAST_MS = 4500
 
 function emptyWorld() {
