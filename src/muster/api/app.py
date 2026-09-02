@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -215,6 +215,31 @@ def _serialize_receipt(receipt: Any) -> dict[str, Any]:
 
 
 
+
+def _parse_week(week: str) -> datetime:
+    """Parse a week-start from a query string.
+
+    A `+` in a timezone offset arrives URL-decoded as a space, so
+    "2026-07-27T00:00:00+00:00" reaches us as "...00:00:00 00:00" and
+    `fromisoformat` rejects it. Callers should not have to know that, so repair
+    it here and accept a bare date as well. Anything else is a 400 rather than a
+    silent fallback to some other week.
+    """
+    candidate = week.strip()
+    if " " in candidate and "T" in candidate:
+        candidate = candidate.replace(" ", "+")
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        try:
+            parsed = datetime.fromisoformat(f"{candidate}T00:00:00+00:00")
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"week must be an ISO date or datetime, got {week!r}"
+            ) from exc
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def _record_seeded_postings(state: MusterState) -> None:
     """Tell the ledger about the weeks the seeded world already has posted.
 
@@ -302,12 +327,27 @@ def create_app(
         }
 
     @app.get("/api/schedule/{site_id}")
-    def get_schedule(site_id: str) -> dict[str, Any]:
+    def get_schedule(site_id: str, week: str | None = None) -> dict[str, Any]:
+        """One site's week. Defaults to the week the world already has posted.
+
+        `week` is needed because DRAFT writes a *different* week from the one the
+        demo world starts with, and without it the console could only ever show
+        the seeded rota - a drafted week would be invisible in the very screen
+        built to display it.
+        """
         state: MusterState = app.state.muster
-        week_starts_at = _next_week_start(state.world)
+        if week:
+            week_starts_at = _parse_week(week)
+        else:
+            posted = state.world.posted_weeks(site_id)
+            week_starts_at = posted[0] if posted else _next_week_start(state.world)
         schedule = state.world.schedule(site_id, week_starts_at)
         if schedule is None:
-            raise HTTPException(status_code=404, detail=f"no schedule for {site_id!r}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"no schedule for {site_id!r} in the week of "
+                       f"{week_starts_at.date().isoformat()}",
+            )
         return {
             "site_id": schedule.site_id,
             "week_starts_at": schedule.week_starts_at.isoformat(),
@@ -338,7 +378,7 @@ def create_app(
         if site is None:
             raise HTTPException(status_code=404, detail=f"unknown site {site_id!r}")
         if week:
-            start = datetime.fromisoformat(week)
+            start = _parse_week(week)
         else:
             posted = state.world.posted_weeks(site_id)
             start = posted[0] if posted else _next_week_start(state.world)

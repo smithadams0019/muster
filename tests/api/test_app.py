@@ -180,3 +180,21 @@ def test_demand_is_served_per_day_so_the_console_can_draw_coverage():
 def test_demand_for_an_unknown_site_is_404():
     client, _ = _client()
     assert client.get("/api/demand/site-nope").status_code == 404
+
+
+def test_a_schedule_can_be_asked_for_by_week():
+    """DRAFT writes a different week from the seeded one. Without this the
+    console could only ever show the rota the demo started with, and a drafted
+    week would be invisible in the screen built to display it."""
+    client, state = _client()
+    posted = state.world.posted_weeks("site-or")[0]
+    body = client.get(f"/api/schedule/site-or?week={posted.isoformat()}").json()
+    assert body["week_starts_at"] == posted.isoformat()
+    assert body["shifts"]
+
+
+def test_a_week_with_no_schedule_is_404_naming_the_week():
+    client, _ = _client()
+    response = client.get("/api/schedule/site-or?week=2030-01-07T00:00:00+00:00")
+    assert response.status_code == 404
+    assert "2030-01-07" in response.json()["detail"]
