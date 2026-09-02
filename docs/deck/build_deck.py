@@ -24,8 +24,18 @@ HERE = Path(__file__).parent
 OUT = HERE / "muster-deck.html"
 
 
-def data_uri(name: str, quality: int = 78) -> str:
+def data_uri(name: str, quality: int = 78, crop: tuple[float, float, float, float] | None = None) -> str:
+    """Inline an image, optionally cropping first.
+
+    `crop` is (left, top, right, bottom) as fractions of the image, because a
+    government site screenshotted whole is four-fifths navigation and the part
+    worth showing is the paragraph carrying the figure.
+    """
     im = Image.open(HERE / name).convert("RGB")
+    if crop:
+        w, h = im.size
+        im = im.crop((round(crop[0] * w), round(crop[1] * h),
+                      round(crop[2] * w), round(crop[3] * h)))
     if im.width > 1800:
         im = im.resize((1800, round(im.height * 1800 / im.width)), Image.LANCZOS)
     buf = io.BytesIO()
@@ -35,56 +45,70 @@ def data_uri(name: str, quality: int = 78) -> str:
 
 SHOTS = {
     "schedule": data_uri("ui-schedule.png"),
-    "decisions": data_uri("ui-decisions.png"),
     "autonomy": data_uri("ui-autonomy.png"),
+    # The primary sources themselves. Not an agency logo: a logo next to a
+    # product implies the regulator endorses it, which is the last thing a
+    # compliance tool should imply, and it is decoration rather than proof.
+    # These pages carry the actual figures the rulebook encodes.
+    # Cropped to roughly the aspect of the box they sit in, so `cover` has
+    # nothing left to trim and no sentence loses its first or last word.
+    "src_oregon": data_uri("src-oregon.png", crop=(0.09, 0.40, 0.72, 0.93)),
+    "src_nyc": data_uri("src-nyc.png", crop=(0.18, 0.12, 0.87, 0.66)),
 }
 
+#: Speaker notes, one per slide, taken verbatim from video-narration.txt so the
+#: two cannot drift. They used to be a second draft of the same talk, and the
+#: two drafts disagreed - the deck still said "nothing in Chicago, seventy-five
+#: in New York" after the world had been reseeded to price eighteen and forty
+#: five.
 NOTES = [
-    "Muster. An autonomous shift coordinator that knows the law. Before I show "
-    "you what it does, the problem, because it is a stranger one than it looks.",
+    "Muster. An autonomous shift coordinator that knows the law.",
 
-    "Somewhere right now a manager is writing next week's rota in a spreadsheet. "
-    "That sounds like nothing. But eleven US jurisdictions now regulate how that "
-    "spreadsheet is allowed to be filled in.",
+    "First the problem, because it is stranger than it looks. Somewhere right now "
+    "a manager is writing next week's rota in a spreadsheet. That sounds like "
+    "nothing. But eleven US jurisdictions regulate how it may be filled in. "
+    "Fourteen days notice. Premiums when it changes. Extra pay for too little "
+    "rest. A worker's right to say no.",
 
-    "And the enforcement is not theoretical. New York City settled with Starbucks "
-    "for thirty-eight point nine million dollars, after finding more than five "
-    "hundred thousand violations across three hundred locations. Chipotle, twenty "
-    "million. Dunkin', Taco Bell, Theory and Walgreens have all settled over the "
-    "same law. Those are companies with legal departments. The person I built this "
-    "for runs three coffee shops and faces the identical rulebook.",
+    "New York City settled with Starbucks for thirty eight point nine million "
+    "dollars, after more than five hundred thousand violations. Chipotle settled "
+    "for twenty million. Dunkin, Taco Bell and Walgreens have settled over the "
+    "same law. Those are companies with legal departments. The person I built "
+    "this for runs three coffee shops and faces the same rulebook.",
 
-    "Here is what surprised me. The rules are not vague. They are arithmetic. "
-    "Oregon owes one hour at the regular rate for adding a shift. Chicago owes a "
-    "quarter over base for working inside the rest period. New York owes ten, "
-    "twenty, forty-five or seventy-five dollars depending on the notice given. You "
-    "can compute every one of them.",
+    "Here is what surprised me when I read them. The rules are not vague. They "
+    "are arithmetic. Every one computable. Almost nobody computes them.",
 
-    "Nobody does. Because the moment it matters is a sick call at six in the "
-    "morning, and at six in the morning the manager has a hole in the rota and no "
-    "time to work out which of four legal fixes is cheapest.",
+    "Because the moment it matters is six in the morning. A hole in the rota, "
+    "four legal ways to fill it, two needing someone's permission. Nobody works "
+    "that out at six.",
 
-    "So Muster does the computing. It drafts next week under the law, and then it "
-    "holds that week together. A shift loses its worker, and it finds every lawful "
-    "cover, prices each against that city's own ordinance, takes the cheapest, and "
-    "writes a receipt naming the clause.",
+    "So Muster does the deciding. It drafts next week under the law, then holds "
+    "it together. A shift loses its worker; Muster finds every lawful cover, "
+    "prices each against that city's ordinance, and takes the cheapest. Every "
+    "change writes a receipt naming the clause, the money, and who decided.",
 
-    "This is the same sick call, at the same hour, at the same wage, in three "
-    "cities. Eighteen dollars in Portland. Nothing in Chicago. Seventy-five in New "
-    "York. Three different formulas from three different ordinances, and the "
-    "rulebook is data, not code, so each figure carries the government source it "
-    "was read from.",
+    "The same sick call, same wage, in three cities. Eighteen dollars in "
+    "Portland, eighteen in Chicago - an hour at the worker's own rate. Forty five "
+    "in New York, a flat tier. And nothing at all in Portland if the cover comes "
+    "off the standby list, a carve-out only Oregon offers.",
 
-    "You decide how much rope it gets. But two rules ignore that dial completely. "
-    "Muster will never waive a worker's rest period on their behalf, and never asks "
-    "a worker who has already said no. That is not my opinion about agents. Oregon "
-    "requires the worker's own consent, New York requires it in writing, and "
-    "Chicago's guidance says the Right to Rest has no exceptions.",
+    "The rulebook is data, not code, and every figure carries the government "
+    "source it was read from.",
 
-    "Strands Agents runs two loops on Bedrock. Claude does the reasoning and never "
-    "the arithmetic. It ships an MCP server over the compliance engine, read-only, "
-    "so nothing over that protocol can change anyone's week. Two hundred and "
-    "twenty-six tests offline, and it is live on AWS right now. Let's use it.",
+    "You decide how much rope it gets. Two rules ignore that dial completely. "
+    "Muster will never waive a worker's rest period on their behalf, and never "
+    "asks someone who has already said no. At every level, including the most "
+    "permissive. That is not my opinion about agents. Oregon requires the "
+    "worker's own consent, New York requires it in writing, Chicago says the "
+    "Right to Rest has no exceptions. An agent that could dial past those would "
+    "not be more capable. It would be unlawful.",
+
+    "Strands Agents runs two loops on Bedrock. Claude reasons and never does the "
+    "arithmetic: the premiums, the rest remedies and the totals are pure "
+    "functions, which is why they are testable. It ships an MCP server over that "
+    "engine too - read only, so another agent can ask what a change costs but "
+    "cannot change anyone's week.",
 ]
 
 SLIDES = f"""
@@ -146,14 +170,32 @@ SLIDES = f"""
 
 <section class="s">
   <div class="rule"></div>
-  <h2>The same sick call. Three cities.</h2>
+  <h2>The same sick call. Same wage. Four answers.</h2>
   <div class="cities">
-    <div class="city"><span class="place">Portland</span><b>$18.00</b><span class="why">one hour at the regular rate</span></div>
-    <div class="city"><span class="place">Chicago</span><b>$0.00</b><span class="why">no tier for this change</span></div>
-    <div class="city hot"><span class="place">New York</span><b>$75.00</b><span class="why">under 24 hours' notice</span></div>
+    <div class="city"><span class="place">Portland</span><b>$18.00</b><span class="why">one hour at the worker's own rate</span></div>
+    <div class="city"><span class="place">Chicago</span><b>$18.00</b><span class="why">the same rule, a different statute</span></div>
+    <div class="city hot"><span class="place">New York</span><b>$45.00</b><span class="why">a flat tier &mdash; under 7 days' notice</span></div>
+    <div class="city free"><span class="place">Portland &middot; standby</span><b>$0.00</b><span class="why">a carve-out only Oregon offers</span></div>
   </div>
   <p class="closer">The rulebook is data, not code. Every figure carries the .gov source it was
-    read from, so you can check the work without reading any Python.</p>
+    read from &mdash; and the carve-out is only free when the worker is on the list <i>and</i>
+    accepted. A claim on its own buys nothing.</p>
+</section>
+
+<section class="s">
+  <div class="rule"></div>
+  <h2>I did not summarise the law. I read it.</h2>
+  <div class="sources">
+    <figure><img src="{SHOTS["src_oregon"]}" alt="Oregon BOLI, predictive scheduling">
+      <figcaption>oregon.gov/boli &mdash; <b>one hour at the regular rate</b>, and
+        <b>one-half</b> per scheduled hour not worked</figcaption></figure>
+    <figure><img src="{SHOTS["src_nyc"]}" alt="NYC 311, Fair Workweek Law">
+      <figcaption>portal.311.nyc.gov &mdash; the Fair Workweek Law, and the agency
+        that enforces it</figcaption></figure>
+  </div>
+  <p class="closer">Four jurisdictions, read from primary sources and encoded as data. Every
+    figure in the rulebook carries the URL it came from, so the work can be checked without
+    reading any Python.</p>
 </section>
 
 <section class="s shot">
@@ -169,16 +211,15 @@ SLIDES = f"""
   <img src="{SHOTS["autonomy"]}" alt="The autonomy dial and the two fixed rules">
 </section>
 
-<section class="s">
+<section class="s centred">
   <div class="rule"></div>
   <h2>What powers it</h2>
   <ul class="stack">
     <li><h3>Strands Agents</h3><p>Two loops — DRAFT writes the week, HOLD keeps it together.</p></li>
-    <li><h3>Amazon Bedrock</h3><p>Claude Sonnet 4.6 reasons. It never does the arithmetic.</p></li>
+    <li><h3>Amazon Bedrock</h3><p>Claude Sonnet reasons. It never does the arithmetic.</p></li>
     <li><h3>Interventions and interrupts</h3><p>The autonomy boundary is executable code, and a paused run resumes days later.</p></li>
     <li><h3>An MCP server</h3><p>The compliance engine, read-only. It can price a change; it cannot change a week.</p></li>
   </ul>
-  <p class="punch final">243 tests offline. &nbsp;Live on AWS right now. &nbsp;Let's use it.</p>
 </section>
 """
 
@@ -231,6 +272,10 @@ p { margin:0; }
 .body { margin-top:18px; font-size:20px; line-height:1.5; color:var(--ink-2); }
 .cites { margin-top:22px; font-size:16px; line-height:1.5; color:var(--ink-3); }
 
+/* The closing slide ends on the list itself, so it is centred rather than
+   top-aligned against half a slide of white. */
+.centred { justify-content:center; }
+
 .quote { justify-content:center; background:var(--wash); }
 .quote h2 { font-size:62px; letter-spacing:-.04em; }
 
@@ -247,15 +292,27 @@ p { margin:0; }
 .stack h3 { font-size:22px; font-weight:700; }
 .stack p { margin-top:4px; font-size:18px; color:var(--ink-2); }
 
-.cities { display:grid; grid-template-columns:repeat(3,1fr); gap:22px; margin-top:44px; }
-.city { background:var(--wash); border:1px solid var(--line); border-radius:14px; padding:26px 24px; }
+.cities { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:44px; }
+.city { background:var(--wash); border:1px solid var(--line); border-radius:14px; padding:24px 20px; }
 .city.hot { background:var(--accent-soft); border-color:#c9bcf5; }
-.city .place { display:block; font-size:15px; font-weight:700; color:var(--ink-2);
-  text-transform:uppercase; letter-spacing:.06em; }
+.city .place { display:block; font-size:13px; font-weight:700; color:var(--ink-2);
+  text-transform:uppercase; letter-spacing:.05em; }
 .city b { display:block; margin-top:10px; font-family:var(--display); font-weight:800;
-  font-size:56px; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
+  font-size:44px; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
 .city.hot b { color:var(--accent); }
-.city .why { display:block; margin-top:8px; font-size:15px; color:var(--ink-2); }
+/* The carve-out is the one that costs nothing, so it is the one that looks
+   different from the three that cost something. */
+.city.free { background:#f0fdf6; border-color:#bfe6cf; }
+.city.free b { color:#12734a; }
+.city .why { display:block; margin-top:8px; font-size:14px; line-height:1.4; color:var(--ink-2); }
+
+.sources { display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:36px; }
+.sources figure { margin:0; }
+.sources img { width:100%; height:330px; object-fit:cover; object-position:left top;
+  border:1px solid var(--line); border-radius:12px; box-shadow:0 6px 22px rgba(22,26,37,.10); }
+.sources figcaption { margin-top:12px; font-family:var(--mono); font-size:12.5px;
+  line-height:1.5; color:var(--ink-3); }
+.sources figcaption b { font-family:var(--sans); font-weight:600; color:var(--ink-2); }
 
 .shot { flex-direction:row; gap:38px; align-items:center; padding:52px 0 52px 76px; }
 .shot-text { width:520px; flex:none; }

@@ -69,7 +69,7 @@ function AutonomyPill({ level }) {
   return <span className="autonomy-pill">{label}</span>
 }
 
-function TopNav({ route, go, decisionsCount, consentCount, autonomyLevel, notifCount, onReportDisruption }) {
+function TopNav({ route, go, decisionsCount, consentCount, autonomyLevel, notifCount, onReportDisruption, onReset }) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -132,6 +132,16 @@ function TopNav({ route, go, decisionsCount, consentCount, autonomyLevel, notifC
                 }}
               >
                 Report a disruption
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onReset()
+                }}
+              >
+                Reset the demo world
               </button>
             </div>
           )}
@@ -257,6 +267,7 @@ export default function App() {
   const busy = useStore((s) => s.busy) || {}
   const refresh = useStore((s) => s.refresh)
   const draftWeek = useStore((s) => s.draftWeek)
+  const resetDemo = useStore((s) => s.resetDemo)
 
   const [selectedSite, setSelectedSite] = useState('')
 
@@ -301,10 +312,11 @@ export default function App() {
         route={route}
         go={go}
         decisionsCount={decisions.length}
-        consentCount={consent.length}
+        consentCount={consent.filter((c) => !c.outcome).length}
         autonomyLevel={autonomy?.level}
-        notifCount={decisions.length + consent.length}
+        notifCount={decisions.length + consent.filter((c) => !c.outcome).length}
         onReportDisruption={() => setDisruptionOpen(true)}
+        onReset={() => resetDemo?.()}
       />
 
       {/* Site, week, drafting and posting only mean something against a rota.

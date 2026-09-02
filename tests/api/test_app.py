@@ -372,3 +372,129 @@ def test_a_decision_with_no_proposal_behind_it_says_so_rather_than_guessing():
     client, _ = _client(hold_runner=pauses)
     client.post("/api/disruptions", json=DISRUPTION)
     assert client.get("/api/decisions").json()[0]["proposal"] is None
+
+
+def test_declining_a_decision_never_reaches_the_agent():
+    """Against the deployed service, a decline resumed the run and the SDK's own
+    evaluate callback did not hold it: the cover was assigned, the worker was
+    notified, and the receipt named the operator who had refused. A decline is
+    enforced here now, not delegated."""
+    resumed = []
+
+    async def resumes(state, pending):
+        resumed.append(pending.decision.decision_id)
+        state.ledger.append({
+            "kind": "assign_cover", "shift_id": pending.decision.offer_id,
+            "worker_id": "w-or-1", "total_cents": 1750,
+        })
+        return HoldRunResult(False, None, None, None, "assigned")
+
+    async def pauses(state, disruption):
+        return HoldRunResult(
+            True, "int-1", "cost_over_budget", {"messages": []}, "held",
+            [{"rule": "cost_over_budget", "detail": "$17.50 exceeds the limit of $0.00."}],
+            {"tool": "assign_cover", "worker_id": "w-or-1", "shift_id": disruption.shift_id},
+        )
+
+    client, state = _client(hold_runner=pauses, resumer=resumes)
+    client.post("/api/disruptions", json=DISRUPTION)
+    decision_id = client.get("/api/decisions").json()[0]["decision_id"]
+
+    body = client.post(f"/api/decisions/{decision_id}/answer", json={
+        "outcome": "decline", "by": "Smith", "role": "Operations manager",
+        "note": "Not at that price.",
+    }).json()
+
+    assert body["status"] == "declined"
+    assert resumed == [], "a declined decision must never be handed back to the agent"
+    assert not [e for e in state.ledger if e["kind"] == "assign_cover"], "nothing may be assigned"
+    assert state.receipts.all() == [], "and nothing may be receipted"
+    assert client.get("/api/decisions").json() == []
+
+
+def test_approving_a_decision_does_reach_the_agent():
+    resumed = []
+
+    async def resumes(state, pending):
+        resumed.append(pending.decision.outcome.value)
+        state.ledger.append({
+            "kind": "assign_cover", "shift_id": pending.decision.offer_id,
+            "worker_id": "w-or-1", "total_cents": 1750,
+        })
+        return HoldRunResult(False, None, None, None, "assigned")
+
+    async def pauses(state, disruption):
+        return HoldRunResult(
+            True, "int-1", "cost_over_budget", {"messages": []}, "held",
+            [{"rule": "cost_over_budget", "detail": "over"}],
+        )
+
+    client, _ = _client(hold_runner=pauses, resumer=resumes)
+    client.post("/api/disruptions", json=DISRUPTION)
+    decision_id = client.get("/api/decisions").json()[0]["decision_id"]
+
+    body = client.post(f"/api/decisions/{decision_id}/answer", json={
+        "outcome": "approve", "by": "Smith", "role": "Operations manager", "note": "",
+    }).json()
+
+    assert resumed == ["approve"]
+    assert body["status"] == "covered"
+
+
+def test_a_worker_who_declined_is_no_longer_offered_as_cover():
+    """The policy consulted the consent store as well as the world, so the cover
+    was blocked — but the enumerator reads only the world, so the person who had
+    just refused went on being offered and priced for the shift they refused."""
+    from datetime import datetime, timezone
+
+    from muster.domain.options import enumerate_cover_options
+
+    week = datetime(2026, 7, 27, tzinfo=timezone.utc)
+    client, state = _client()
+    schedule = state.world.schedule("site-nyc", week)
+    gap = next(s for s in schedule.shifts if s.worker_id and s.starts_at >= week)
+    offered = enumerate_cover_options(state.world, gap, at=state.world.now())
+    subject = offered[0].worker_id
+
+    request = _ask(state, worker_id=subject, shift_id=gap.shift_id)
+    client.post(f"/api/consent/{request.request_id}/answer",
+                json={"outcome": "declined", "channel": "console"})
+
+    after = {o.worker_id for o in enumerate_cover_options(state.world, gap, at=state.world.now())}
+    assert subject not in after
+    assert state.world.has_declined(subject, gap.shift_id)
+
+
+def test_a_reset_puts_the_world_back_without_a_redeploy():
+    """Every run leaves marks — receipts, answered consent, a decision inbox. The
+    only way to get a clean console back was to redeploy and wait, which is not
+    something anyone can do between two takes of a recording."""
+    async def assigns(state, disruption):
+        state.ledger.append({
+            "kind": "assign_cover", "shift_id": disruption.shift_id,
+            "worker_id": "w-or-1", "total_cents": 1750, "site_id": "site-or",
+        })
+        return HoldRunResult(False, None, None, None, "assigned")
+
+    client, state = _client(hold_runner=assigns)
+    client.put("/api/autonomy", json={"level": "trusted"})
+    client.post("/api/disruptions", json=DISRUPTION)
+    _ask(client.app.state.muster)
+    assert client.get("/api/consent").json()
+
+    body = client.post("/api/demo/reset").json()
+    assert body["status"] == "reset"
+    assert client.get("/api/consent").json() == []
+    assert client.get("/api/decisions").json() == []
+    assert client.get("/api/receipts").json() == []
+    # The dial is a presenter's setting, not run state: a reset keeps it.
+    assert client.get("/api/autonomy").json()["level"] == "trusted"
+
+
+def test_a_reset_leaves_the_seeded_postings_in_place():
+    """A shift may only be touched if its week is posted, and the guard reads the
+    ledger. A reset that forgot them would produce a console where nothing works."""
+    client, _ = _client()
+    client.post("/api/demo/reset")
+    ledger = client.app.state.muster.ledger
+    assert [e for e in ledger if e["kind"] == "post_schedule"]

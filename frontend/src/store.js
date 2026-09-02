@@ -129,7 +129,11 @@ export const useStore = create((set, get) => ({
         const rule = ruleFor(get().decisions, res.decision_id, res.rule)
         get().notify(`Held for you — ${rule}`)
       } else if (res.status === 'covered') {
-        get().notify('Covered without interrupting you')
+        get().notify('Approved — the shift is covered')
+      } else if (res.status === 'declined') {
+        // A decline is not handed back to the agent at all, so nothing about
+        // anyone's week changed. Say that rather than implying Muster tried.
+        get().notify('Declined — the shift is still open and nothing was changed')
       } else {
         get().notify('Nobody could take it — nothing changed')
       }
@@ -167,6 +171,22 @@ export const useStore = create((set, get) => ({
       return res
     } catch (err) {
       get().notify(err?.message || 'Could not record consent')
+      throw err
+    } finally {
+      set((s) => ({ busy: { ...s.busy, [key]: false } }))
+    }
+  },
+
+  resetDemo: async () => {
+    const key = 'reset'
+    set((s) => ({ busy: { ...s.busy, [key]: true } }))
+    try {
+      await api.resetDemo()
+      await get().refresh({ quiet: true })
+      set({ route: 'schedule' })
+      get().notify('World reset — back to the posted week')
+    } catch (err) {
+      get().notify(err?.message || 'Could not reset the world')
       throw err
     } finally {
       set((s) => ({ busy: { ...s.busy, [key]: false } }))

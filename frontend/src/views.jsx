@@ -319,8 +319,8 @@ function DecisionCard({ decision }) {
       {nonNegotiable && (
         <div className="vw-alert">
           ⚠ This needs the worker's own yes — a manager cannot approve it away. Check{' '}
-          <button type="button" className="vw-btn vw-btn-sm" onClick={() => go?.('consent')}>Consent</button>,
-          or decline to have Muster try another route.
+          <button type="button" className="vw-btn vw-btn-sm" onClick={() => go?.('consent')}>Consent</button>.
+          Declining closes this and leaves the shift open.
         </div>
       )}
 

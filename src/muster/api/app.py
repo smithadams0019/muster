@@ -496,6 +496,24 @@ def create_app(
             decision_id, payload.outcome, by=payload.by, role=payload.role, note=payload.note,
         )
 
+        # A decline ends the run here, in our own code, and is never handed back
+        # to the agent to be honoured.
+        #
+        # It used to resume either way and rely on the SDK's `evaluate` callback
+        # to refuse the paused tool call. Against the deployed service that
+        # refusal did not hold: an operator declined a $17.50 cover, the resumed
+        # run assigned it anyway, notified the worker, and wrote a receipt with
+        # the operator's own name in `decided_by`. A decline that performs the
+        # thing declined, and then attributes it to the person who refused, is
+        # the single worst failure this product can have, and it is not
+        # something to delegate to a framework's callback.
+        #
+        # Nothing about the week changes: the shift keeps its gap, and the
+        # operator can report it again if they want Muster to look for another
+        # route.
+        if pending.decision.outcome is DecisionOutcome.DECLINE:
+            return {"status": "declined", "shift_id": pending.decision.offer_id}
+
         result = await decision_resumer(state, pending)
 
         if result.paused:
@@ -558,6 +576,12 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
         if record.outcome is not ConsentOutcome.GRANTED:
+            # Write the refusal into the world as well as the consent store. The
+            # policy consulted both, so the cover was already blocked - but
+            # `enumerate_cover_options` reads only the world, so the person who
+            # had just said no went on being offered, priced and ranked as cover
+            # for the shift they refused. One fact, one place.
+            state.world.record_decline(record.request.worker_id, record.request.shift_id)
             return {"request_id": request_id, "outcome": record.outcome.value,
                     "status": "declined"}
 
@@ -603,6 +627,26 @@ def create_app(
             }
             for entry in state.trail.entries()
         ]
+
+    @app.post("/api/demo/reset")
+    def reset_demo() -> dict[str, Any]:
+        """Put the world back to how it started.
+
+        The demo world is in-process and every run leaves marks on it: receipts,
+        answered consent, a decision inbox, a ledger. Without this the only way
+        to get a clean console back was to redeploy the container and wait, which
+        is not a thing anyone can do between two takes of a recording.
+
+        This rebuilds the state exactly as start-up does, including the seeded
+        postings the dependency guard needs, so a reset console is the same
+        console a cold start produces.
+        """
+        state: MusterState = app.state.muster
+        fresh = MusterState()
+        fresh.autonomy = state.autonomy
+        app.state.muster = fresh
+        _record_seeded_postings(fresh)
+        return {"status": "reset", "autonomy": fresh.autonomy.value}
 
     @app.get("/api/autonomy")
     def get_autonomy() -> dict[str, Any]:

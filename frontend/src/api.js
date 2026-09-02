@@ -77,6 +77,10 @@ export function setAutonomy(level) {
   return request('/autonomy', { method: 'PUT', body: JSON.stringify({ level }) })
 }
 
+export function resetDemo() {
+  return request('/api/demo/reset', { method: 'POST' })
+}
+
 export function receiptsCsvUrl() {
   return `${BASE}/receipts.csv`
 }
