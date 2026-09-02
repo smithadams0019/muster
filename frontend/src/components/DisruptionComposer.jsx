@@ -60,6 +60,15 @@ function ComposerStyle() {
 }
 
 export default function DisruptionComposer({ open, onClose }) {
+  // Escape closes it. Without this the overlay stayed up and swallowed every
+  // click on the page behind it, which is a dialog you cannot get out of.
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
   const world = useStore((s) => s.world)
   const schedules = useStore((s) => s.schedules)
   const storeError = useStore((s) => s.error)

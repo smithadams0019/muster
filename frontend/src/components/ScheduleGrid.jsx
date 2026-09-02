@@ -16,9 +16,11 @@
 // to a token triple (--STATE, --STATE-bg, --STATE-line) defined in
 // tokens.css; this file and ShiftCard.jsx never spell out a hex value.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store.js'
 import ShiftCard from './ShiftCard.jsx'
+
+const API_BASE = import.meta.env.VITE_MUSTER_API || '/api'
 
 const ROLE_ORDER = ['shift_lead', 'baker', 'barista']
 const ROLE_LABELS = { shift_lead: 'Shift lead', baker: 'Baker', barista: 'Barista' }
@@ -95,7 +97,7 @@ function GridStyle() {
       }
       .sg-corner { left: 0; z-index: 4; }
       .sg-daycol { text-align: left; font-weight: 600; }
-      .sg-daycol-today { color: var(--accent-ink); background: var(--accent-soft); }
+      .sg-daycol-today { color: var(--accent); background: var(--accent-soft); }
 
       .sg-group-head {
         grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
@@ -116,7 +118,7 @@ function GridStyle() {
       }
       .sg-avatar {
         flex: none; width: 30px; height: 30px; border-radius: 999px; background: var(--accent-soft);
-        color: var(--accent-ink); display: flex; align-items: center; justify-content: center;
+        color: var(--accent); display: flex; align-items: center; justify-content: center;
         font-family: var(--sans); font-size: 11.5px; font-weight: 700;
       }
       .sg-avatar-open { background: var(--open-bg); color: var(--open); border: 1px dashed var(--open-line); }
@@ -189,7 +191,7 @@ function Legend() {
   )
 }
 
-export default function ScheduleGrid({ siteId }) {
+export default function ScheduleGrid({ siteId, groupBy = 'role', week }) {
   const world = useStore((s) => s.world)
   const schedules = useStore((s) => s.schedules) || {}
   const decisions = useStore((s) => s.decisions) || []
@@ -200,7 +202,31 @@ export default function ScheduleGrid({ siteId }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
 
   const site = (world?.sites || []).find((s) => s.site_id === siteId)
-  const schedule = schedules[siteId]
+  // The store holds the posted week. When the operator steps to another week we
+  // fetch that one directly, so the stepper moves something real instead of
+  // relabelling the same rota.
+  const posted = schedules[siteId]
+  const [fetched, setFetched] = useState(null)
+  const [missing, setMissing] = useState(false)
+
+  useEffect(() => {
+    if (!siteId || !week) { setFetched(null); setMissing(false); return }
+    if (posted && posted.week_starts_at === week) { setFetched(null); setMissing(false); return }
+    let cancelled = false
+    setFetched(null)
+    setMissing(false)
+    fetch(`${API_BASE}/schedule/${encodeURIComponent(siteId)}?week=${encodeURIComponent(week)}`)
+      .then((res) => {
+        if (res.status === 404) { if (!cancelled) setMissing(true); return null }
+        if (!res.ok) throw new Error(String(res.status))
+        return res.json()
+      })
+      .then((data) => { if (!cancelled && data) setFetched(data) })
+      .catch(() => { if (!cancelled) setMissing(true) })
+    return () => { cancelled = true }
+  }, [siteId, week, posted])
+
+  const schedule = fetched || (missing ? null : posted)
   const nowIso = world?.now
 
   const heldIds = useMemo(() => new Set(decisions.map((d) => d.offer_id)), [decisions])
@@ -263,13 +289,21 @@ export default function ScheduleGrid({ siteId }) {
   }, [schedule?.shifts, schedule?.week_starts_at, receipts, siteId, days])
 
   const groups = useMemo(() => {
+    // "By employee" is one flat, alphabetical list - the view you want when
+    // hunting for one person. "By role" bands them, which is how cover is
+    // actually reasoned about. The toolbar selector chooses; before this it was
+    // a control that changed nothing.
+    if (groupBy === 'employee') {
+      const roster = [...workers].sort((a, b) => a.name.localeCompare(b.name))
+      return roster.length ? [['everyone', roster]] : []
+    }
     const byRole = new Map(ROLE_ORDER.map((r) => [r, []]))
     for (const w of workers) {
       if (!byRole.has(w.role)) byRole.set(w.role, [])
       byRole.get(w.role).push(w)
     }
     return [...byRole.entries()].filter(([, roster]) => roster.length > 0)
-  }, [workers])
+  }, [workers, groupBy])
 
   function toggleGroup(role) {
     setCollapsed((prev) => {
@@ -321,7 +355,11 @@ export default function ScheduleGrid({ siteId }) {
       </div>
 
       {!schedule ? (
-        <div className="sg-empty">No schedule loaded for this site yet.</div>
+        <div className="sg-empty">
+          {missing
+            ? `No schedule is posted for the week of ${String(week).slice(0, 10)}. Use “Draft with Muster” to build one.`
+            : 'No schedule loaded for this site yet.'}
+        </div>
       ) : (
         <div className="sg-scroll">
           <div className="sg-grid">
@@ -355,7 +393,7 @@ export default function ScheduleGrid({ siteId }) {
                 <div key={role} style={{ display: 'contents' }}>
                   <div className="sg-group-head" onClick={() => toggleGroup(role)}>
                     <span className="sg-group-dot" style={{ opacity: ROLE_DOT_OPACITY[role] ?? 0.6 }} />
-                    <span className="sg-group-name">{ROLE_LABELS[role] || role}</span>
+                    <span className="sg-group-name">{role === 'everyone' ? 'Everyone' : (ROLE_LABELS[role] || role)}</span>
                     <span className="sg-group-count">{roster.length}</span>
                     <span className={`sg-group-chevron${isCollapsed ? '' : ' sg-group-chevron-open'}`}>▾</span>
                   </div>

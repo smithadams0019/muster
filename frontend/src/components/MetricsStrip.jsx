@@ -52,7 +52,7 @@ function scheduledCoverByHour(shifts, hourList, day) {
 const CHART_W = 120
 const CHART_H = 44
 
-export default function MetricsStrip({ siteId }) {
+export default function MetricsStrip({ siteId, week }) {
   const schedules = useStore((s) => s.schedules)
   const workers = useStore((s) => s.world?.workers) || []
   const receipts = useStore((s) => s.receipts) || []
@@ -66,7 +66,8 @@ export default function MetricsStrip({ siteId }) {
     let cancelled = false
     setDemand(null)
     setError(null)
-    fetch(`${BASE}/demand/${encodeURIComponent(siteId)}`)
+    const qs = week ? `?week=${encodeURIComponent(week)}` : ''
+    fetch(`${BASE}/demand/${encodeURIComponent(siteId)}${qs}`)
       .then((res) => {
         if (!res.ok) throw new Error(`demand fetch failed: ${res.status}`)
         return res.json()
@@ -74,7 +75,7 @@ export default function MetricsStrip({ siteId }) {
       .then((data) => { if (!cancelled) setDemand(data) })
       .catch((err) => { if (!cancelled) setError(err?.message || 'Could not load demand') })
     return () => { cancelled = true }
-  }, [siteId])
+  }, [siteId, week])
 
   if (!siteId) return null
   if (error) return <div className="coverage-panel coverage-panel-error">{error}</div>

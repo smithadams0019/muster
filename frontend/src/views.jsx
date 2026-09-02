@@ -172,7 +172,7 @@ function ScreenStyle() {
         border: 1px solid var(--line); border-radius: var(--r-sm); padding: 2px 8px; }
 
       .vw-avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--accent-soft);
-        color: var(--accent-ink); display: flex; align-items: center; justify-content: center;
+        color: var(--accent); border: 1px solid var(--accent-line); display: flex; align-items: center; justify-content: center;
         font-size: 11.5px; font-weight: 700; flex: none; }
     `}</style>
   )
@@ -193,7 +193,7 @@ function initials(name) {
 // -- Schedule ---------------------------------------------------------------
 // The product's face: a Deputy-style week grid, one site at a time.
 
-export function Schedule({ siteId }) {
+export function Schedule({ siteId, groupBy, week }) {
   const world = useStore((s) => s.world)
   // The site comes from the toolbar picker, which is the only site selector in
   // the product. This screen used to carry its own tab row as well, so the page
@@ -207,7 +207,7 @@ export function Schedule({ siteId }) {
       {sites.length === 0 ? (
         <Empty>No sites yet.</Empty>
       ) : (
-        activeSiteId && <ScheduleGrid siteId={activeSiteId} />
+        activeSiteId && <ScheduleGrid siteId={activeSiteId} groupBy={groupBy} week={week} />
       )}
     </div>
   )

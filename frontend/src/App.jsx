@@ -100,7 +100,13 @@ function TopNav({ route, go, decisionsCount, consentCount, autonomyLevel, notifC
 
       <div className="top-nav-right">
         <AutonomyPill level={autonomyLevel} />
-        <button type="button" className="icon-btn" aria-label="Notifications" title="Notifications">
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Notifications"
+          title="What is waiting on you"
+          onClick={() => go('decisions')}
+        >
           <IconBell width={19} height={19} />
           {Boolean(notifCount) && <span className="icon-btn-badge">{notifCount}</span>}
         </button>
@@ -111,7 +117,7 @@ function TopNav({ route, go, decisionsCount, consentCount, autonomyLevel, notifC
             onClick={() => setMenuOpen((v) => !v)}
             aria-expanded={menuOpen}
           >
-            <span className="operator-avatar">RK</span>
+            <span className="operator-avatar">AS</span>
             <span>Hello, Smith</span>
             <IconChevronDown width={14} height={14} />
           </button>
@@ -140,10 +146,14 @@ function Toolbar({
   selectedSite,
   onSelectSite,
   weekLabel,
+  weekOffset,
+  onWeekChange,
+  groupBy,
+  onGroupByChange,
   onRefresh,
   onDraft,
-  onPost,
   draftBusy,
+  onSettings,
 }) {
   return (
     <div className="toolbar">
@@ -165,18 +175,33 @@ function Toolbar({
         </div>
 
         <div className="week-stepper">
-          <button type="button" className="icon-btn icon-btn-sm" disabled aria-label="Previous week">
+          <button
+            type="button"
+            className="icon-btn icon-btn-sm"
+            aria-label="Previous week"
+            onClick={() => onWeekChange(weekOffset - 1)}
+          >
             <IconChevronLeft width={16} height={16} />
           </button>
           <span className="week-range">{weekLabel}</span>
-          <button type="button" className="icon-btn icon-btn-sm" disabled aria-label="Next week">
+          <button
+            type="button"
+            className="icon-btn icon-btn-sm"
+            aria-label="Next week"
+            onClick={() => onWeekChange(weekOffset + 1)}
+          >
             <IconChevronRight width={16} height={16} />
           </button>
         </div>
 
-        <select className="view-select" defaultValue="employee" aria-label="View">
-          <option value="employee">By employee</option>
+        <select
+          className="view-select"
+          value={groupBy}
+          onChange={(e) => onGroupByChange(e.target.value)}
+          aria-label="View"
+        >
           <option value="role">By role</option>
+          <option value="employee">By employee</option>
         </select>
       </div>
 
@@ -184,22 +209,23 @@ function Toolbar({
         <button type="button" className="icon-btn" onClick={onRefresh} aria-label="Refresh" title="Refresh">
           <IconRefresh width={18} height={18} />
         </button>
-        <button type="button" className="btn btn-outline-accent" onClick={onDraft}>
-          <IconSparkle width={16} height={16} /> Draft with Muster
-        </button>
-        <button type="button" className="btn btn-ghost">
-          <IconInsights width={16} height={16} /> Insights
-        </button>
-        <button type="button" className="icon-btn" aria-label="Settings" title="Settings">
-          <IconGear width={18} height={18} />
-        </button>
         <button
           type="button"
           className="btn btn-accent-solid"
-          onClick={onPost}
+          onClick={onDraft}
           disabled={!selectedSite || draftBusy}
         >
-          Post schedule
+          <IconSparkle width={16} height={16} />
+          {draftBusy ? 'Drafting…' : 'Draft with Muster'}
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Settings"
+          title="Autonomy and limits"
+          onClick={onSettings}
+        >
+          <IconGear width={18} height={18} />
         </button>
       </div>
     </div>
@@ -233,6 +259,12 @@ export default function App() {
   const draftWeek = useStore((s) => s.draftWeek)
 
   const [selectedSite, setSelectedSite] = useState('')
+
+  // The stepper moves this; the grid and the analytics both follow it.
+
+  const [weekOffset, setWeekOffset] = useState(0)
+
+  const [groupBy, setGroupBy] = useState('role')
   const [draftOpen, setDraftOpen] = useState(false)
   const [disruptionOpen, setDisruptionOpen] = useState(false)
 
@@ -250,15 +282,18 @@ export default function App() {
     if (!selectedSite && sites.length > 0) setSelectedSite(sites[0].site_id)
   }, [sites, selectedSite])
 
-  const weekLabel = useMemo(() => fmtWeekRange(nextWeekStart(world?.now)), [world?.now])
+  const viewWeekStart = useMemo(() => {
+    const base = nextWeekStart(world?.now)
+    if (!base) return null
+    const shifted = new Date(base)
+    shifted.setUTCDate(base.getUTCDate() + weekOffset * 7)
+    return shifted
+  }, [world?.now, weekOffset])
+  const weekLabel = useMemo(() => fmtWeekRange(viewWeekStart), [viewWeekStart])
+  const viewWeekIso = viewWeekStart ? viewWeekStart.toISOString() : null
 
   const Screen = SCREENS[route] || V.Schedule
   const draftBusy = Boolean(busy[`draft:${selectedSite}`])
-
-  function handlePost() {
-    if (!selectedSite) return
-    draftWeek?.(selectedSite)?.catch(() => {})
-  }
 
   return (
     <div className="app-shell">
@@ -272,23 +307,33 @@ export default function App() {
         onReportDisruption={() => setDisruptionOpen(true)}
       />
 
-      <Toolbar
-        sites={sites}
-        selectedSite={selectedSite}
-        onSelectSite={setSelectedSite}
-        weekLabel={weekLabel}
-        onRefresh={() => refresh()}
-        onDraft={() => setDraftOpen(true)}
-        onPost={handlePost}
-        draftBusy={draftBusy}
-      />
-
-      {route === 'schedule' && <MetricsStrip siteId={selectedSite} />}
+      {/* Site, week, drafting and posting only mean something against a rota.
+          Showing them on Receipts or Timeline offered controls that could not
+          act on what was on screen. */}
+      {route === 'schedule' && (
+        <>
+          <Toolbar
+            sites={sites}
+            selectedSite={selectedSite}
+            onSelectSite={setSelectedSite}
+            weekLabel={weekLabel}
+            weekOffset={weekOffset}
+            onWeekChange={setWeekOffset}
+            groupBy={groupBy}
+            onGroupByChange={setGroupBy}
+            onRefresh={() => refresh()}
+            onDraft={() => setDraftOpen(true)}
+            draftBusy={draftBusy}
+            onSettings={() => go('autonomy')}
+          />
+          <MetricsStrip siteId={selectedSite} week={viewWeekIso} />
+        </>
+      )}
 
       <main className="app-main">
         {error && <div className="error-strip error-strip-page">{error}</div>}
         <div className="screen-body">
-          {loading ? <Skeleton /> : <Screen siteId={selectedSite} />}
+          {loading ? <Skeleton /> : <Screen siteId={selectedSite} groupBy={groupBy} week={viewWeekIso} />}
         </div>
       </main>
 
