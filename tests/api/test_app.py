@@ -198,3 +198,43 @@ def test_a_week_with_no_schedule_is_404_naming_the_week():
     response = client.get("/api/schedule/site-or?week=2030-01-07T00:00:00+00:00")
     assert response.status_code == 404
     assert "2030-01-07" in response.json()["detail"]
+
+
+def _hold(rule="cost_over_budget", detail="$45.00 exceeds $0.00."):
+    async def runner(state, disruption):
+        return HoldRunResult(True, "int-1", rule, {"scope": "a"}, "?",
+                             rule_hits=[{"rule": rule, "detail": detail}])
+    return runner
+
+
+def test_a_cover_decision_names_the_shift_it_is_about():
+    """HOLD stops on covering one shift and has priced options behind it."""
+    client, state = _client(hold_runner=_hold())
+    shift = state.world.schedule("site-nyc", state.world.posted_weeks("site-nyc")[0]).shifts[0]
+    client.post("/api/disruptions",
+                json={"kind": "sick_call", "shift_id": shift.shift_id, "note": ""})
+    pending = client.get("/api/decisions").json()[0]
+    assert pending["kind"] == "cover"
+    assert pending["subject"]["shift_id"] == shift.shift_id
+    assert pending["subject"]["site_name"]
+
+
+def test_a_posting_decision_is_not_dressed_up_as_a_cover():
+    """DRAFT stops on posting a whole week: no worker, no per-option cost.
+
+    Rendered through the cover-options table it showed an em dash for the worker,
+    the rule's sentence in the money column, and "no consent needed" beside it -
+    three claims about a cover that does not exist.
+    """
+    async def drafts(state, site_id):
+        return HoldRunResult(True, "int-2", "understaffed_below_minimum", {"scope": "a"}, "?",
+                             rule_hits=[{"rule": "understaffed_below_minimum",
+                                         "detail": "The shift would run below the minimum."}])
+
+    client, _ = _client(draft_runner=drafts)
+    client.post("/api/draft/site-or")
+    pending = client.get("/api/decisions").json()[0]
+    assert pending["kind"] == "posting"
+    assert pending["subject"]["site_id"] == "site-or"
+    assert pending["subject"]["site_name"] == "Sable Pearl"
+    assert "shift_id" not in pending["subject"]

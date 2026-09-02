@@ -254,21 +254,38 @@ function DecisionCard({ decision }) {
     answerDecision?.(decision.decision_id, outcome, note)?.catch(() => {})
   }
 
+  // Two different things pause a run and they are not the same shape. A cover
+  // decision is about one shift and has priced options behind it. A posting
+  // decision is about a whole week and has no worker and no per-option cost, so
+  // rendering it through the options table produced an em dash for the worker,
+  // the rule's own sentence in the money column, and "no consent needed" beside
+  // it — three claims about a cover that does not exist.
+  const isPosting = decision.kind === 'posting'
+  const subject = decision.subject || {}
+
   return (
     <div className="vw-card">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <span className="vw-badge vw-badge-held">held</span>
-        <span className="vw-row-sub vw-mono">{decision.offer_id}</span>
+        <span className="vw-row-sub">
+          {isPosting ? 'posting next week' : 'covering a shift'}
+        </span>
       </div>
       <div className="vw-row-title" style={{ fontSize: 14.5 }}>{RULE_LABELS[decision.rule] || decision.rule}</div>
-      {located && (
+      {isPosting ? (
         <div className="vw-row-sub">
-          {siteName(world, located.site_id)} · {ROLE_LABELS[located.shift.role] || located.shift.role} ·{' '}
-          {fmtDateTime(located.shift.starts_at)}–{fmtTime(located.shift.ends_at)}
+          {subject.site_name || subject.site_id} · Muster drafted the week and stopped before posting it.
         </div>
+      ) : (
+        located && (
+          <div className="vw-row-sub">
+            {siteName(world, located.site_id)} · {ROLE_LABELS[located.shift.role] || located.shift.role} ·{' '}
+            {fmtDateTime(located.shift.starts_at)}–{fmtTime(located.shift.ends_at)}
+          </div>
+        )
       )}
 
-      <OptionTable options={options} />
+      {!isPosting && <OptionTable options={options} />}
 
       <div style={{ padding: '10px 0' }}>
         <div className="vw-card-title">Rules that fired</div>

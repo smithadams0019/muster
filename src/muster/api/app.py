@@ -167,10 +167,42 @@ def _shift_is_covered(state: MusterState, shift_id: str, result: RunResult) -> b
     )
 
 
-def _serialize_pending(pending: PendingDecision) -> dict[str, Any]:
+def _serialize_pending(pending: PendingDecision, state: MusterState) -> dict[str, Any]:
+    """One pending decision, said in terms the console can render truthfully.
+
+    Two different things pause a run, and they are not the same shape. HOLD stops
+    on covering one shift, and has priced cover options behind it. DRAFT stops on
+    posting a whole week, and has no worker and no per-option cost at all.
+
+    Without `kind` the console rendered both through the cover-options table, so a
+    drafting escalation appeared as a row with an em dash for the worker, the
+    rule's sentence in the money column and "no consent needed" beside it - three
+    statements about a cover that does not exist.
+    """
     decision = pending.decision
+    shift = state.world.shift(decision.offer_id)
+    site = state.world.site(decision.offer_id)
+    if shift is not None:
+        kind = "cover"
+        subject_site = state.world.site(shift.site_id)
+        subject = {
+            "shift_id": shift.shift_id,
+            "site_id": shift.site_id,
+            "site_name": subject_site.name if subject_site else shift.site_id,
+            "role": shift.role.value,
+            "starts_at": shift.starts_at.isoformat(),
+            "ends_at": shift.ends_at.isoformat(),
+        }
+    else:
+        kind = "posting"
+        subject = {
+            "site_id": decision.offer_id,
+            "site_name": site.name if site else decision.offer_id,
+        }
     return {
         "decision_id": decision.decision_id,
+        "kind": kind,
+        "subject": subject,
         "offer_id": decision.offer_id,
         "rule": decision.rule,
         "prompt": decision.prompt,
@@ -428,7 +460,7 @@ def create_app(
     @app.get("/api/decisions")
     def get_decisions() -> list[dict[str, Any]]:
         state: MusterState = app.state.muster
-        return [_serialize_pending(p) for p in state.inbox.pending()]
+        return [_serialize_pending(p, state) for p in state.inbox.pending()]
 
     @app.post("/api/decisions/{decision_id}/answer")
     async def answer_decision(decision_id: str, payload: DecisionAnswerIn) -> dict[str, Any]:
