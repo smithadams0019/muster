@@ -1,0 +1,63 @@
+Muster. An autonomous shift coordinator that knows the law.
+
+Before I show you what it does, the problem, because it is a stranger one than it looks.
+
+Somewhere right now, a manager is writing next week's rota in a spreadsheet. That sounds like nothing. But eleven US jurisdictions regulate how that spreadsheet may be filled in. Fourteen days notice. Premiums when it changes. Extra pay for too little rest. And a worker's right to say no.
+
+And the enforcement is not theoretical.
+
+New York City settled with Starbucks for thirty eight point nine million dollars, after finding more than five hundred thousand violations across three hundred locations. Chipotle settled for twenty million. Dunkin, Taco Bell, Theory and Walgreens have all settled over the same law.
+
+Those are companies with legal departments. The person I built this for runs three coffee shops and faces the identical rulebook, enforced by the identical regulator.
+
+Here is what surprised me when I read the ordinances. The rules are not vague. They are arithmetic.
+
+Oregon owes one hour at the regular rate to add a shift. Chicago owes a quarter over base for working inside the rest period. New York owes ten, twenty, forty five or seventy five dollars depending on the notice given, and a flat hundred for a clopening.
+
+Every one of them is computable. Almost nobody computes them.
+
+Because the moment it matters is six in the morning. There is a hole in the rota, four legal ways to fill it, and two of them need someone's permission. At six in the morning nobody has time to work that out.
+
+So Muster does the deciding.
+
+It drafts next week under the law, and then it holds that week together. A shift loses its worker, and Muster finds every lawful way to cover it, prices each one against that city's own ordinance, and takes the cheapest. Every change writes a receipt naming the clause, the money, the carve out claimed, and who decided.
+
+This is the same sick call, at the same hour, at the same wage, in three different cities. Eighteen dollars in Portland. Nothing in Chicago. Seventy five in New York. Three different formulas, from three different ordinances.
+
+The rulebook is data, not code. Every figure carries the government source it was read from, so you can check my work without reading any Python.
+
+You decide how much rope it gets. But two rules ignore that dial completely.
+
+Muster will never waive a worker's rest period on their behalf. And it never asks a worker who has already said no. At every level, including the most permissive one.
+
+That is not my opinion about agents. Oregon requires the worker's own consent. New York requires it in writing. Chicago's guidance says the Right to Rest has no exceptions. An agent that could dial past those would not be more capable. It would be unlawful.
+
+Strands Agents runs two loops on Bedrock. Claude does the reasoning and never the arithmetic: the premiums, the rest remedies and the totals are pure functions, which is why they are testable. It also ships an MCP server over the compliance engine, read only, so another agent can ask what a change costs but cannot change anyone's week.
+
+Two hundred and twenty six tests run offline, and it is live on AWS right now.
+
+Let's use it.
+
+This is the console. Three coffee shops, in Oregon, Chicago and New York, because the same sick call has three different legal answers.
+
+The panel at the top is cover against demand. The filled area is what the day needs, hour by hour. The line is who is scheduled. Where the line drops below the area, we are short. Below it is the week itself, colour coded by role.
+
+The dial is set to conservative: Muster may not spend a cent without me.
+
+Now a barista calls in sick for the New York open. I log it the way a manager would take the call.
+
+This pause is real. It is a live Bedrock call, not a canned response.
+
+Held for me, and it says why in plain English rather than a rule code. Forty five dollars exceeds the conservative limit of zero. That is New York's under seven days tier, priced from the ordinance.
+
+The receipts are empty. Nothing was committed, nobody was told to come in. It stopped before it did anything, not after.
+
+I approve it, and the paused run picks up exactly where it stopped. It could have been answered tomorrow, on a different machine.
+
+And now the receipt exists. The shift, the worker, forty five dollars, the clause that priced it, and my name against the decision.
+
+This is the autonomy dial. Three levels, each moving four limits at once. And underneath, the two rules that no level reaches, each with the statute behind it.
+
+That is Muster. It does the arithmetic that everything else leaves to a person at six in the morning, and it hands back only the calls that are genuinely theirs.
+
+It is live on AWS, the link is in the submission, and the demo world is a fixed week, so every number is reproducible.

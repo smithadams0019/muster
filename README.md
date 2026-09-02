@@ -81,6 +81,17 @@ pytest -m "not integration" -q
 
 ---
 
+## 2a. Architecture
+
+![Muster architecture](docs/diagrams/muster-architecture.png)
+
+Two guards sit on the path, in this order. `PostingDependencyGuard` goes first
+because its `Deny` short-circuits: a notification for a cover nobody approved must
+never reach a policy that would judge it on its own merits and find nothing wrong.
+Source: [`docs/diagrams/muster-architecture.mmd`](docs/diagrams/muster-architecture.mmd).
+
+---
+
 ## 3. Which jurisdictions are encoded
 
 The rulebook is data, not a branch in the code — one engine, one row per
