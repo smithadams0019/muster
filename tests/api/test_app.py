@@ -163,3 +163,20 @@ def test_the_autonomy_dial_can_be_read_and_changed():
 def test_an_invalid_autonomy_level_is_rejected():
     client, _ = _client()
     assert client.put("/api/autonomy", json={"level": "reckless"}).status_code == 422
+
+
+def test_demand_is_served_per_day_so_the_console_can_draw_coverage():
+    """Scheduled-versus-required is only honest if both sides come from the
+    same place the DRAFT loop reads, rather than being recomputed in a browser."""
+    client, _ = _client()
+    body = client.get("/api/demand/site-or").json()
+    assert body["site_id"] == "site-or"
+    assert len(body["days"]) == 7
+    first = body["days"][0]
+    assert first["required_shift_hours"] > 0
+    assert all(body["opens_at_hour"] <= int(h) < body["closes_at_hour"] for h in first["hours"])
+
+
+def test_demand_for_an_unknown_site_is_404():
+    client, _ = _client()
+    assert client.get("/api/demand/site-nope").status_code == 404

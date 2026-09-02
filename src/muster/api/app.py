@@ -324,6 +324,41 @@ def create_app(
             ],
         }
 
+    @app.get("/api/demand/{site_id}")
+    def get_demand(site_id: str, week: str | None = None) -> dict[str, Any]:
+        """The hourly cover requirement for each day of a week, per site.
+
+        The console draws scheduled-versus-required beside the rota, and that
+        comparison is only honest if both sides come from the same place the
+        DRAFT loop reads. Serving demand here rather than recomputing it in the
+        browser keeps the picture and the agent's reasoning in step.
+        """
+        state: MusterState = app.state.muster
+        site = state.world.site(site_id)
+        if site is None:
+            raise HTTPException(status_code=404, detail=f"unknown site {site_id!r}")
+        if week:
+            start = datetime.fromisoformat(week)
+        else:
+            posted = state.world.posted_weeks(site_id)
+            start = posted[0] if posted else _next_week_start(state.world)
+        days = []
+        for offset in range(7):
+            day = start + timedelta(days=offset)
+            curve = state.world.demand(site_id, day)
+            days.append({
+                "day": day.date().isoformat(),
+                "hours": {str(h): n for h, n in sorted(curve.items())},
+                "required_shift_hours": sum(curve.values()),
+            })
+        return {
+            "site_id": site_id,
+            "week_starts_at": start.isoformat(),
+            "opens_at_hour": site.opens_at_hour,
+            "closes_at_hour": site.closes_at_hour,
+            "days": days,
+        }
+
     @app.post("/api/draft/{site_id}")
     async def post_draft(site_id: str) -> dict[str, Any]:
         state: MusterState = app.state.muster
