@@ -28,7 +28,19 @@ _WEEK_START = datetime(2026, 7, 27, tzinfo=_TZ)  # Monday
 
 _RATES = ["17.50", "18.00", "18.50", "19.25", "20.00"]
 _GOOD_FAITH_HOURS = [20.0, 24.0, 30.0, 32.0]
-_NAMES = ["Jordan", "Riley", "Sam", "Taylor", "Morgan", "Casey", "Drew", "Reese"]
+# A distinct roster per site. The same eight names repeated at all three read as
+# a placeholder, and made "Jordan (OR)" versus "Jordan (CHI)" hard to hold apart
+# on screen.
+_NAMES_BY_SITE = {
+    "site-or": ["Marisol", "Tobias", "Priya", "Declan", "Noor", "Emeka", "Sadie", "Wren"],
+    "site-chi": ["Antoine", "Hana", "Boris", "Lucia", "Kwame", "Fiona", "Rashid", "Junie"],
+    "site-nyc": ["Ximena", "Owen", "Nadia", "Malik", "Beatriz", "Sung-ho", "Alina", "Tavio"],
+}
+
+#: Two shift leads per site, not one. With a single lead the seeded week put the
+#: same person on all seven days - fifty-six hours without a day off, in a
+#: product whose entire subject is protecting people from exactly that.
+_ROLE_BY_INDEX = {1: Role.SHIFT_LEAD, 2: Role.SHIFT_LEAD, 3: Role.BAKER}
 
 # (site_id, name, jurisdiction_code, opens_at_hour, closes_at_hour)
 _SITE_DEFS = (
@@ -38,6 +50,10 @@ _SITE_DEFS = (
 )
 
 _DEMAND_SCALE = {"site-or": 1.0, "site-chi": 1.3, "site-nyc": 1.6}
+
+#: Monday through Sunday. A coffee shop is not equally busy every day, and a
+#: chart that drew the same silhouette seven times told a viewer nothing.
+_DAY_SCALE = (0.9, 0.85, 1.0, 1.05, 1.25, 1.45, 1.2)
 _BASE_DEMAND = {
     7: 3, 8: 4, 9: 3, 10: 2, 11: 1, 12: 1, 13: 1, 14: 1,
     15: 2, 16: 3, 17: 2, 18: 1, 19: 1, 20: 1, 21: 1,
@@ -77,21 +93,19 @@ class SableCoffee:
             suffix = _suffix(site_id)
             site_roster: list[Worker] = []
             for i in range(1, 9):
-                if i == 1:
-                    role = Role.SHIFT_LEAD
-                elif i == 2:
-                    role = Role.BAKER
-                else:
-                    role = Role.BARISTA
+                role = _ROLE_BY_INDEX.get(i, Role.BARISTA)
 
                 rate = Money.from_dollars(rng.choice(_RATES))
                 good_faith = rng.choice(_GOOD_FAITH_HOURS)
-                certified = i in (1, 3, 4)  # the lead and two baristas hold food_handler
-                on_standby = site_id == "site-or" and i in (5, 6)
+                # Both leads and two baristas are food-safety certified, so a
+                # cover can genuinely fall below the site's minimum without the
+                # roster being contrived to make it happen.
+                certified = i in (1, 2, 4, 5)
+                on_standby = site_id == "site-or" and i in (6, 7)
 
                 worker = Worker(
                     worker_id=f"w-{suffix}-{i}",
-                    name=f"{_NAMES[i - 1]} ({suffix.upper()})",
+                    name=_NAMES_BY_SITE[site_id][i - 1],
                     site_id=site_id,
                     role=role,
                     hourly_rate=rate,
@@ -130,9 +144,10 @@ class SableCoffee:
         every site, so a later task can find a rest-period breach without having
         to invent one of its own.
         """
-        baristas = self._workers_by_site[site.site_id][2:]  # six baristas
-        lead = self._workers_by_site[site.site_id][0]
-        baker = self._workers_by_site[site.site_id][1]
+        roster = self._workers_by_site[site.site_id]
+        leads = roster[0:2]      # two, so neither works the whole week
+        baker = roster[2]
+        baristas = roster[3:]    # five
         bridge_worker = baristas[0]
         suffix = _suffix(site.site_id)
 
@@ -151,7 +166,8 @@ class SableCoffee:
         for day_index in range(7):
             day = _WEEK_START + timedelta(days=day_index)
             opener = baristas[day_index % len(baristas)]
-            closer = baristas[(day_index + 3) % len(baristas)]
+            closer = baristas[(day_index + 2) % len(baristas)]
+            lead = leads[day_index % len(leads)]
 
             shifts.append(
                 Shift(
@@ -173,16 +189,17 @@ class SableCoffee:
                     worker_id=lead.worker_id,
                 )
             )
-            shifts.append(
-                Shift(
-                    shift_id=f"s-{suffix}-{day:%Y%m%d}-bake",
-                    site_id=site.site_id,
-                    role=Role.BAKER,
-                    starts_at=_at(day, 5),
-                    ends_at=_at(day, 11),
-                    worker_id=baker.worker_id,
+            if day_index < 5:  # the baker works Monday to Friday, and rests
+                shifts.append(
+                    Shift(
+                        shift_id=f"s-{suffix}-{day:%Y%m%d}-bake",
+                        site_id=site.site_id,
+                        role=Role.BAKER,
+                        starts_at=_at(day, 5),
+                        ends_at=_at(day, 11),
+                        worker_id=baker.worker_id,
+                    )
                 )
-            )
             shifts.append(
                 Shift(
                     shift_id=f"s-{suffix}-{day:%Y%m%d}-close",
@@ -231,7 +248,7 @@ class SableCoffee:
         site = self._sites.get(site_id)
         if site is None:
             return {}
-        scale = _DEMAND_SCALE.get(site_id, 1.0)
+        scale = _DEMAND_SCALE.get(site_id, 1.0) * _DAY_SCALE[day.weekday()]
         curve: dict[int, int] = {}
         for hour in range(site.opens_at_hour, site.closes_at_hour):
             base = _BASE_DEMAND.get(hour, 1)

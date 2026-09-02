@@ -344,6 +344,13 @@ def create_app(
                     "role": worker.role.value,
                     "hourly_rate": worker.hourly_rate.dollars,
                     "good_faith_hours": worker.good_faith_hours,
+                    # The People screen has columns for both, and the standby
+                    # list is load-bearing: it is the Oregon-only carve-out that
+                    # makes a cover free there and costs money everywhere else.
+                    # Without these the page showed an em dash for every worker
+                    # while claiming the carve-out exists.
+                    "certifications": sorted(worker.certifications),
+                    "on_standby_list": worker.on_standby_list,
                 }
                 for worker in world.workers()
             ],

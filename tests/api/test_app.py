@@ -238,3 +238,17 @@ def test_a_posting_decision_is_not_dressed_up_as_a_cover():
     assert pending["subject"]["site_id"] == "site-or"
     assert pending["subject"]["site_name"] == "Sable Pearl"
     assert "shift_id" not in pending["subject"]
+
+
+def test_the_world_sends_certifications_and_standby_membership():
+    """The People screen has columns for both, and the standby list is
+    load-bearing: it is the Oregon-only carve-out that makes a cover free there
+    and costs money everywhere else. Without these the page showed an em dash
+    for every worker while claiming the carve-out exists."""
+    client, _ = _client()
+    workers = client.get("/api/world").json()["workers"]
+    assert any(w["certifications"] for w in workers), "nobody is certified"
+    on_standby = [w for w in workers if w["on_standby_list"]]
+    assert on_standby, "nobody is on a standby list"
+    assert all(w["site_id"] == "site-or" for w in on_standby), \
+        "the standby carve-out exists only in Oregon"

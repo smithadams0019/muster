@@ -59,8 +59,10 @@ def test_the_standby_list_is_empty_at_6am_and_every_remaining_cover_costs_money(
 
     # Both Oregon workers on the standby list decline this shift. The list, for
     # this gap, is empty.
-    world.record_decline("w-or-5", gap.shift_id)
-    world.record_decline("w-or-6", gap.shift_id)
+    standby = [w for w in world.workers("site-or") if w.on_standby_list]
+    assert standby, "the Oregon roster must carry the standby carve-out somewhere"
+    for worker in standby:
+        world.record_decline(worker.worker_id, gap.shift_id)
 
     options = enumerate_cover_options(world, gap, at=world.now())
     assert options, "the seeded roster must still have someone free to offer"
@@ -77,6 +79,7 @@ def test_the_same_sick_call_in_portland_chicago_and_new_york_costs_three_differe
     """Same worker index, same notice, same frozen clock — the ordinance is the only thing that varies."""
     world = SableCoffee()
     totals: dict[str, Money] = {}
+    rates: dict[str, Money] = {}
 
     for site_id, code in (
         ("site-or", "us-or"),
@@ -96,13 +99,18 @@ def test_the_same_sick_call_in_portland_chicago_and_new_york_costs_three_differe
             hours_before_this_week=schedule.hours_for(cover.worker_id), rest_gap_hours=None,
             worker_id=cover.worker_id, shift_id=gap.shift_id, claims=(), evidence=world,
         )
-        totals[site_id] = result.total
+        premium = next(
+            (line.amount for line in result.lines if "schedule change premium" in line.clause),
+            Money.zero(),
+        )
+        totals[site_id] = premium
+        rates[site_id] = cover.hourly_rate
 
     assert len(set(totals.values())) == 3, totals
-    assert totals["site-or"] == Money.from_dollars("18.50")
-    assert totals["site-chi"] == Money.from_dollars("20.00")
+    assert totals["site-or"] == rates["site-or"], "Oregon owes one hour at the worker's own rate"
+    assert totals["site-chi"] == rates["site-chi"], "Chicago owes one hour at the worker's own rate"
     assert totals["site-nyc"] == Money.from_dollars("45.00"), (
-        "NYC fast food prices this band as a flat $45 premium, not hours at the worker's own rate"
+        "NYC fast food prices this band as a flat $45 tier, not hours at the worker's own rate"
     )
 
 
@@ -123,8 +131,19 @@ def test_an_agent_claims_the_swap_was_employee_requested_but_no_request_exists()
         claims=(CarveOutClaim(CarveOut.WORKER_REQUESTED),), evidence=world,
     )
 
+    unclaimed = price_change(
+        rules=rules, kind=ChangeKind.ADD_SHIFT, posted_at=schedule.posted_at,
+        changed_at=world.now(), schedule_starts_at=WEEK_START, hourly_rate=worker.hourly_rate,
+        hours_lost=0.0, hours_worked=gap.hours, hours_before_this_week=schedule.hours_for(worker.worker_id),
+        rest_gap_hours=None, worker_id=worker.worker_id, shift_id=gap.shift_id,
+        claims=(), evidence=world,
+    )
+
     assert claimed.carve_outs_applied == ()
-    assert claimed.total == Money.from_dollars("18.50"), "unexempted: the full add-shift premium is still owed"
+    assert claimed.total == unclaimed.total, (
+        "an unevidenced claim must move the price by exactly nothing"
+    )
+    assert claimed.total.cents > 0, "and the premium is genuinely owed, not zero for another reason"
 
 
 def test_an_agent_claims_the_standby_carve_out_in_chicago_where_it_does_not_exist():
@@ -149,8 +168,16 @@ def test_an_agent_claims_the_standby_carve_out_in_chicago_where_it_does_not_exis
         rest_gap_hours=None, worker_id=worker.worker_id, shift_id=gap.shift_id,
         claims=(claim,), evidence=world,
     )
+    unclaimed = price_change(
+        rules=rules, kind=ChangeKind.ADD_SHIFT, posted_at=schedule.posted_at,
+        changed_at=world.now(), schedule_starts_at=WEEK_START, hourly_rate=worker.hourly_rate,
+        hours_lost=0.0, hours_worked=gap.hours, hours_before_this_week=schedule.hours_for(worker.worker_id),
+        rest_gap_hours=None, worker_id=worker.worker_id, shift_id=gap.shift_id,
+        claims=(), evidence=world,
+    )
     assert result.carve_outs_applied == ()
-    assert result.total == Money.from_dollars("20.00")
+    assert result.total == unclaimed.total, "a carve-out this city does not offer changes nothing"
+    assert result.total.cents > 0
 
 
 def test_covering_the_shift_would_leave_nobody_food_safety_certified_on_the_floor():
@@ -207,12 +234,23 @@ def test_the_cheapest_cover_is_a_clopening_and_it_is_the_only_one():
     rules = for_code("us-il-chicago", on=world.now().date())
     gap = next(s for s in schedule.shifts if s.shift_id == "s-chi-20260730-close")
 
-    for option in enumerate_cover_options(world, gap, at=world.now()):
-        if option.worker_id != "w-chi-2":
+    # Find the person who would actually be clopening rather than naming one:
+    # a reseed moves who opened that morning, and a hard-coded id would quietly
+    # turn this into a test of some other worker's ordinary shift.
+    candidates = enumerate_cover_options(world, gap, at=world.now())
+    clopener = next(
+        (o for o in candidates
+         if o.rest_gap_hours is not None and o.rest_gap_hours < rules.rest_hours),
+        None,
+    )
+    assert clopener is not None, "the seeded week must contain someone who would clopen this close"
+
+    for option in candidates:
+        if option.worker_id != clopener.worker_id:
             world.record_decline(option.worker_id, gap.shift_id)
 
     only = enumerate_cover_options(world, gap, at=world.now())
-    assert [o.worker_id for o in only] == ["w-chi-2"]
+    assert [o.worker_id for o in only] == [clopener.worker_id]
     assert only[0].rest_gap_hours is not None and only[0].rest_gap_hours < rules.rest_hours
 
     result = _price_option(world, schedule, rules, gap, only[0])
@@ -220,9 +258,9 @@ def test_the_cheapest_cover_is_a_clopening_and_it_is_the_only_one():
     assert result.requires_consent is True
 
     # A claim that the worker asked for this — evidenced or not — still cannot buy back the consent step.
-    world.record_worker_request("w-chi-2", gap.shift_id)
+    world.record_worker_request(clopener.worker_id, gap.shift_id)
     claim = CarveOutClaim(CarveOut.WORKER_REQUESTED)
     assert carve_out_applies(
-        claim, rules=rules, worker_id="w-chi-2", shift_id=gap.shift_id,
+        claim, rules=rules, worker_id=clopener.worker_id, shift_id=gap.shift_id,
         evidence=world, against_rest=True,
     ) is False, "no carve-out ever reaches a rest rule in a jurisdiction with rest_has_carve_outs=False"
