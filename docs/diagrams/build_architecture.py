@@ -94,69 +94,47 @@ class Page:
 
 
 # ============================ page 1: how it works ==========================
-# Big shapes, few words, one direction. A judge should get the whole idea from
-# this page without reading anything twice; the detail lives on page two for
-# anyone who wants it.
+# Six boxes and one line of text under each. Anything that needed a footnote to
+# be understood has been cut rather than shrunk: an earlier draft laid the whole
+# system out as six labelled columns, which was accurate and unreadable.
 
 BIG = ("rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#c9cede;"
-       "fontSize=15;fontColor=#161a25;arcSize=12;spacing=10;")
+       "fontSize=17;fontColor=#161a25;arcSize=10;spacing=12;")
 BIG_ACC = ("rounded=1;whiteSpace=wrap;html=1;fillColor=#efeaff;strokeColor=#4429c4;"
-           "strokeWidth=2;fontSize=15;fontColor=#2f1b7a;arcSize=12;spacing=10;")
+           "strokeWidth=2;fontSize=17;fontColor=#2f1b7a;arcSize=10;spacing=12;")
 BIG_OK = ("rounded=1;whiteSpace=wrap;html=1;fillColor=#eefaf3;strokeColor=#12734a;"
-          "strokeWidth=2;fontSize=15;fontColor=#0d5c3a;arcSize=12;spacing=10;")
+          "strokeWidth=2;fontSize=17;fontColor=#0d5c3a;arcSize=10;spacing=12;")
 BIG_ACTOR = ("ellipse;whiteSpace=wrap;html=1;fillColor=#4429c4;strokeColor=#2f1b7a;"
-             "fontSize=15;fontColor=#ffffff;fontStyle=1;")
-SUB = ("text;html=1;whiteSpace=wrap;align=center;verticalAlign=top;fontSize=12;"
-       "fontColor=#5a6273;")
+             "fontSize=17;fontColor=#ffffff;fontStyle=1;")
+FOOT = ("text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontSize=13;"
+        "fontColor=#5a6273;")
 BIG_EDGE = ("edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#5a6273;"
-            "strokeWidth=2;fontSize=13;fontColor=#5a6273;endArrow=blockThin;endFill=1;"
+            "strokeWidth=2;fontSize=14;fontColor=#5a6273;endArrow=blockThin;endFill=1;"
             "labelBackgroundColor=#ffffff;")
-BIG_EDGE_ACC = BIG_EDGE.replace("#5a6273", "#4429c4") + "fontStyle=1;"
+BIG_EDGE_ACC = ("edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4429c4;"
+                "strokeWidth=2;fontSize=14;fontColor=#4429c4;fontStyle=1;"
+                "endArrow=blockThin;endFill=1;labelBackgroundColor=#ffffff;")
 
-a = Page("How it works", 1340, 760)
-a.node("t", "Muster — an autonomous shift coordinator that knows the law", 60, 34, 900, 34, TITLE)
-a.node("tsub", "A shift loses its worker. Four cities price that differently. Muster does the "
-               "arithmetic, and stops at the line it may not cross.", 60, 68, 900, 24, SUB.replace("align=center", "align=left"))
+a = Page("How it works", 1180, 540)
+a.node("t", "Muster", 50, 34, 300, 34, TITLE)
 
-a.node("s1", "A shift loses\nits worker", 60, 200, 160, 90, BIG_ACTOR)
-a.node("s2", "Muster finds every\nlawful cover and\nprices each one", 280, 195, 200, 100, BIG)
-a.node("s3", "The law\n4 city rulebooks, as data", 280, 360, 200, 70, BIG_ACC)
-a.node("s4", "Is it inside the\nlimits you set?", 550, 200, 180, 90, BIG_ACC)
+a.node("s1", "A shift loses\nits worker", 50, 150, 170, 100, BIG_ACTOR)
+a.node("s2", "Muster prices every\nlawful cover against\nthat city's law", 270, 145, 230, 110, BIG)
+a.node("s3", "Inside the limits\nyou set?", 550, 155, 190, 90, BIG_ACC)
 
-a.node("o1", "Yes — it does it\nand writes a receipt", 820, 100, 230, 80, BIG_OK)
-a.node("o2", "No — it asks you\ncost, overtime, hours", 820, 205, 230, 80, BIG)
-a.node("o3", "Only the worker can say yes\na rest-period waiver", 820, 310, 230, 80, BIG_ACC)
+a.node("o1", "Yes — it covers it,\nand writes a receipt", 790, 60, 320, 80, BIG_OK)
+a.node("o2", "Too expensive — it asks you", 790, 160, 320, 80, BIG)
+a.node("o3", "A rest-period waiver —\nonly the worker can say yes", 790, 260, 320, 80, BIG_ACC)
 
-a.node("p1", "Operator", 1130, 210, 150, 70, BIG_ACTOR)
-a.node("p2", "Worker", 1130, 315, 150, 70, BIG_ACTOR)
-a.node("r1", "Receipt\nthe clause, the money,\nwho decided", 1130, 95, 150, 90, BIG_OK)
-
-a.node("k1", "Every figure comes from the city's own .gov page.", 270, 438, 220, 40, SUB)
-a.node("k2", "Two rules no setting can move: Muster never waives a worker's rest period on "
-             "their behalf, and never asks someone who has already said no.",
-       550, 478, 420, 44, SUB.replace("align=center", "align=left"))
-a.node("k3", "Nothing is committed before it stops — a held decision leaves the receipts empty.",
-       990, 478, 300, 44, SUB.replace("align=center", "align=left"))
-
-a.node("g8", "BUILT WITH", 60, 560, 1180, 130, GROUP)
-a.node("d1", "Strands Agents\ntwo loops, and the autonomy\nboundary as executable code", 84, 596, 270, 72, BIG_ACC)
-a.node("d2", "Amazon Bedrock\nClaude Sonnet reasons.\nIt never does the arithmetic.", 374, 596, 270, 72, BIG_ACC)
-a.node("d3", "AWS App Runner\none container: agent,\nAPI and console", 664, 596, 250, 72, BIG)
-a.node("d4", "An MCP server\nread-only over the same\nengine. It cannot change a week.", 934, 596, 280, 72, BIG)
+a.node("f", "Strands Agents on Amazon Bedrock  ·  four city rulebooks held as data, "
+            "every figure carrying its .gov source", 50, 400, 1060, 26, FOOT)
+a.node("f2", "Claude reasons. It never does the arithmetic.", 50, 428, 1060, 26, FOOT)
 
 a.edge("a1", "s1", "s2", "", BIG_EDGE)
-a.edge("a2", "s3", "s2", "prices from", BIG_EDGE)
-a.edge("a3", "s2", "s4", "", BIG_EDGE)
-# Fan out from three different points on the same edge of the question, so no
-# branch has to cross the box belonging to another branch.
-a.edge("a4", "s4", "o1", "", BIG_EDGE_ACC, exit=(1, 0.2), entry=(0, 0.5))
-a.edge("a5", "s4", "o2", "", BIG_EDGE, exit=(1, 0.5), entry=(0, 0.5))
-a.edge("a6", "s4", "o3", "", BIG_EDGE_ACC, exit=(1, 0.8), entry=(0, 0.5))
-a.edge("a7", "o1", "r1", "", BIG_EDGE_ACC, exit=(1, 0.5), entry=(0, 0.5))
-a.edge("a8", "o2", "p1", "", BIG_EDGE, exit=(1, 0.5), entry=(0, 0.5))
-a.edge("a9", "o3", "p2", "", BIG_EDGE_ACC, exit=(1, 0.5), entry=(0, 0.5))
-a.edge("a10", "p1", "r1", "approve", BIG_EDGE_ACC, exit=(0.5, 0), entry=(0.5, 1))
-a.edge("a11", "p2", "s4", "yes", BIG_EDGE_ACC, exit=(0.5, 1), entry=(0.5, 1))
+a.edge("a2", "s2", "s3", "", BIG_EDGE)
+a.edge("a3", "s3", "o1", "", BIG_EDGE_ACC, exit=(1, 0.2), entry=(0, 0.5))
+a.edge("a4", "s3", "o2", "", BIG_EDGE, exit=(1, 0.5), entry=(0, 0.5))
+a.edge("a5", "s3", "o3", "", BIG_EDGE_ACC, exit=(1, 0.8), entry=(0, 0.5))
 
 # ========================= page 2: the decision path ========================
 b = Page("Under the hood", 1560, 800)
