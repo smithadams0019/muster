@@ -14,7 +14,13 @@ function emptyWorld() {
 }
 
 function ruleFor(decisions, decisionId, fallbackRule) {
+  // The whole product's claim is that it names what stopped it in plain English
+  // rather than in rule codes, and the toast is usually the first place an
+  // operator reads that. It used to say "cost_over_budget"; the API already
+  // returns the sentence, so use it and keep the code as a last resort.
   const decision = decisions.find((d) => d.decision_id === decisionId)
+  const detail = decision?.rule_hits?.[0]?.detail
+  if (detail) return detail
   return decision?.rule || fallbackRule || 'a policy limit'
 }
 
